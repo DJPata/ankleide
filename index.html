@@ -110,6 +110,12 @@
         </label>
       </div>
     </div>
+<div class="card"><h2>So klappt die Anprobe am besten</h2><ul class="tips">
+        <li>Jedes Teil <b>einzeln</b> und <b>von vorne</b> fotografieren. Die Rückseite braucht die KI nicht.</li>
+        <li><b>Flach</b> auf Bett oder Boden legen oder an einen Bügel an eine helle Tür hängen. Ruhiger, einfarbiger Hintergrund.</li>
+        <li><b>Tageslicht</b> am Fenster, kein Blitz. Das ganze Teil muss im Bild sein, glatt gestrichen, nicht zerknüllt.</li>
+        <li>Von <b>oben</b> fotografieren, damit nichts schief oder verzerrt ist.</li>
+      </ul></div>
     <div class="filters chips" id="filters"></div>
     <div class="grid" id="wardrobe"></div>
   </section>
@@ -130,6 +136,11 @@
         </div>
       </div>
     </div>
+<div class="card"><h2>Das ideale Foto von dir</h2><ul class="tips">
+        <li><b>Ganzkörper</b> von Kopf bis Fuß, gerade stehend, Arme locker neben dem Körper.</li>
+        <li><b>Schlichte, enge Kleidung</b> (z. B. einfarbiges T-Shirt und Jeans). Keine Jacke, kein Mantel, keine Tasche.</li>
+        <li>Helle Wand dahinter, gutes Tageslicht, Kamera auf Brusthöhe. Am besten fotografiert dich jemand.</li>
+      </ul></div>
   </section>
 
   <!-- ANZIEHEN -->
@@ -164,6 +175,7 @@
         <div id="tryonBox"><div class="placeholder">Klicke auf „Anprobieren“, um dich im Outfit zu sehen.</div></div>
         <div class="row" style="margin-top:14px">
           <button class="btn" id="tryonBtn">Anprobieren</button>
+          <label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="proToggle"> Beste Qualität (Pro, langsamer)</label>
           <a class="btn secondary" id="downloadBtn" download="ankleide-look.png" hidden>Bild speichern</a>
         </div>
       </div>
@@ -235,6 +247,7 @@ function shrink(file, max = 1024) {
 }
 
 // ---------- Gemini direkt aus dem Browser ----------
+const PRO_IMAGE_MODEL = 'gemini-3-pro-image';
 const DEFAULTS = { textModel: 'gemini-3.5-flash', imageModel: 'gemini-nano-banana-2.1' };
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 let cfg = { key: '', ...DEFAULTS };
@@ -294,11 +307,22 @@ Antworte NUR mit JSON: {"title": kurzer Name des Looks, "itemIds": [...], "reaso
     if (!r.itemIds.length) throw new Error('Gemini hat keine passenden Teile gefunden. Bitte nochmal versuchen.');
     return r;
   },
-  async '/api/tryon'({ portrait, items: chosen, occasion }) {
-    const parts = [{ text: 'Bild 1 ist ein Foto der Person. Die folgenden Bilder sind einzelne Kleidungsstücke:' }, img(portrait)];
-    chosen.forEach((it, n) => { parts.push({ text: `Kleidungsstück ${n + 1}: ${it.name || it.category} – ${it.description || ''}` }); parts.push(img(it.image)); });
-    parts.push({ text: `Erzeuge ein fotorealistisches Ganzkörperfoto genau DIESER Person (gleiches Gesicht, gleiche Frisur, gleiche Hautfarbe, gleiche Statur), die genau diese Kleidungsstücke trägt. Übernimm Farben, Muster, Schnitt und Details exakt. Keine zusätzlichen Kleidungsstücke, außer neutrale Schuhe falls keine dabei sind. Natürliche, aufrechte Pose, freundlicher Ausdruck, schlichter heller Hintergrund passend zum Anlass "${occasion}", weiches Licht, Hochformat.` });
-    const out = await gemini(cfg.imageModel, parts, { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: '3:4' } });
+  async '/api/tryon'({ portrait, items: chosen, occasion, pro }) {
+    const parts = [{ text: 'IMAGE 1 – the person (keep this exact person):' }, img(portrait)];
+    chosen.forEach((it, n) => {
+      parts.push({ text: `IMAGE ${n + 2} – garment to put on the person (${it.category || 'clothing'}): ${it.name || ''}. ${it.description || ''}` });
+      parts.push(img(it.image));
+    });
+    const list = chosen.map((it, n) => `IMAGE ${n + 2} (${it.category || 'garment'})`).join(', ');
+    parts.push({ text: `Virtual try-on. Edit IMAGE 1: dress the person in ${list}.
+- REMOVE and REPLACE everything the person is currently wearing on the matching body parts with these garments. The result must clearly show the new garments on the body, not the old outfit.
+- The garment photos may be lying flat, on a hanger or wrinkled: understand the garment and fit it naturally to the person's body with realistic drape, folds and correct size.
+- Copy each garment faithfully: exact color, pattern, print, logo position, collar, buttons, sleeve length, fabric.
+- Keep the person identical: same face, hair, skin tone, body shape and height. Do not beautify or change the face.
+- Show the full body from head to feet, standing naturally, facing the camera. If no shoes are given, add simple shoes that fit the occasion.
+- Clean, bright, neutral background suitable for "${occasion}", soft even light, photorealistic, portrait orientation.
+Return only the edited photo.` });
+    const out = await gemini(pro ? PRO_IMAGE_MODEL : cfg.imageModel, parts, { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: '3:4' } });
     const p = out.find(x => x.inlineData || x.inline_data);
     if (!p) throw new Error('Gemini hat kein Bild erzeugt. ' + out.map(x => x.text || '').join(' ').trim());
     const d = p.inlineData || p.inline_data;
@@ -449,6 +473,7 @@ $('#tryonBtn').onclick = async () => {
   try {
     const chosen = look.itemIds.map(id => items.find(i => i.id === id)).filter(Boolean);
     const r = await api('/api/tryon', {
+      pro: $('#proToggle').checked,
       portrait, occasion: currentOccasion(),
       items: chosen.map(i => ({ image: i.image, name: i.name, category: i.category, description: i.description })),
     });
