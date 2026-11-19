@@ -273,13 +273,13 @@ async function geminiOnce(model, parts, generationConfig = {}) {
   if (!res.ok) {
     const m = data?.error?.message || `Fehler ${res.status}`;
     if (res.status === 400 && /API key/i.test(m)) throw new Error('Der Gemini-Schlüssel ist ungültig. Prüfe ihn unter ⚙︎.');
-    const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next });
+    const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next, raw: `${res.status} ${m}` });
     if (res.status === 404) throw err(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`, false, true);
-    if (res.status === 429) throw err(/billing|quota/i.test(m) && !/demand|overload/i.test(m)
+    if (res.status === 429) throw err(/billing|quota|limit: 0/i.test(m) && !/demand|overload/i.test(m)
       ? 'Gemini-Kontingent erreicht. Für Bilder musst du in AI Studio eventuell die Abrechnung aktivieren.'
       : 'Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
     if (res.status >= 500) throw err('Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
-    throw new Error('Gemini: ' + m);
+    throw Object.assign(new Error('Gemini: ' + m), { raw: `${res.status} ${m}` });
   }
   const out = data?.candidates?.[0]?.content?.parts || [];
   if (!out.length) throw new Error(`Gemini hat nichts zurückgegeben (Grund: ${data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || 'unbekannt'}).`);
@@ -294,19 +294,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function gemini(model, parts, generationConfig = {}) {
   const pool = /image|banana/.test(model) ? FALLBACK_IMAGE : FALLBACK_TEXT;
   const models = [model, ...pool.filter(m => m !== model)];
-  let last;
+  let last; const tried = [];
   for (const m of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try { return await geminiOnce(m, parts, generationConfig); }
       catch (e) {
-        last = e;
-        if (!e.next) throw e;
+        last = e; tried.push(`${m}: ${e.raw || e.message}`);
+        if (!e.next) { e.details = tried; throw e; }
         if (!e.retry || attempt === 1) break;
         await sleep(2000);
       }
     }
   }
-  throw last;
+  last.details = tried; throw last;
 }
 async function geminiJson(parts) {
   const out = await gemini(cfg.textModel, parts, { responseMimeType: 'application/json', temperature: 0.6 });
@@ -361,7 +361,21 @@ $('#saveKey').onclick = async () => {
   saveSettings(); const out = $('#keyResult'), btn = $('#saveKey');
   if (!cfg.key) { out.textContent = 'Bitte einen Schlüssel eintragen.'; return; }
   busy(btn, true, 'Teste …');
-  try { await gemini(cfg.textModel, [{ text: 'Antworte nur mit: ok' }]); out.textContent = '✓ Verbindung zu Gemini klappt.'; $('#status').innerHTML = ''; }
+  try {
+    await gemini(cfg.textModel, [{ text: 'Antworte nur mit: ok' }]);
+    let note = '';
+    try {
+      const r = await fetch(`${BASE}/models?pageSize=200`, { headers: { 'x-goog-api-key': cfg.key } });
+      const names = ((await r.json()).models || []).map(m => m.name.replace('models/', ''));
+      const imgs = names.filter(n => /image|banana/.test(n) && !/imagen|veo/.test(n));
+      if (imgs.length) {
+        FALLBACK_IMAGE.splice(0, FALLBACK_IMAGE.length, ...imgs);
+        if (!imgs.includes(cfg.imageModel)) { cfg.imageModel = imgs[0]; $('#imageModel').value = imgs[0]; saveSettings(); note = ` Bildmodell auf „${imgs[0]}“ umgestellt.`; }
+        note += ` Verfügbare Bildmodelle: ${imgs.join(', ')}.`;
+      } else note = ' Achtung: Für deinen Schlüssel ist kein Bildmodell freigeschaltet.';
+    } catch {}
+    out.textContent = '✓ Verbindung zu Gemini klappt.' + note; $('#status').innerHTML = '';
+  }
   catch (e) { out.textContent = '✗ ' + e.message; }
   busy(btn, false);
 };
@@ -507,8 +521,11 @@ $('#tryonBtn').onclick = async () => {
     $('#tryonBox').innerHTML = `<img src="${src}" alt="Du im Outfit">`;
     $('#downloadBtn').href = src; $('#downloadBtn').hidden = false;
   } catch (e) {
-    $('#tryonBox').innerHTML = '<div class="placeholder">Das hat nicht geklappt. Versuch es nochmal.</div>';
-    showError(e.message);
+    const det = (e.details || []).map(d => `<li>${esc(d)}</li>`).join('');
+    $('#tryonBox').innerHTML = `<div class="placeholder" style="place-items:start;text-align:left;overflow:auto"><div>
+      <b>Das hat nicht geklappt.</b><p style="margin:6px 0">${esc(e.message || e)}</p>
+      ${det ? `<details open><summary>Antwort von Google</summary><ul style="font-size:12px;padding-left:18px;word-break:break-word">${det}</ul></details>` : ''}
+      <p style="font-size:13px">Mach davon bitte einen Screenshot für Claude.</p></div></div>`;
   }
   busy(btn, false);
 };
