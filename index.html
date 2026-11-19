@@ -275,8 +275,8 @@ async function geminiOnce(model, parts, generationConfig = {}) {
     if (res.status === 400 && /API key/i.test(m)) throw new Error('Der Gemini-Schlüssel ist ungültig. Prüfe ihn unter ⚙︎.');
     const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next, raw: `${res.status} ${m}` });
     if (res.status === 404) throw err(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`, false, true);
-    if (res.status === 429) throw err(/billing|quota|limit: 0/i.test(m) && !/demand|overload/i.test(m)
-      ? 'Gemini-Kontingent erreicht. Für Bilder musst du in AI Studio eventuell die Abrechnung aktivieren.'
+    if (res.status === 429) throw err(/image|banana/.test(model) || (/billing|quota|limit: 0/i.test(m) && !/demand|overload/i.test(m))
+      ? 'Die Bildmodelle von Google sind nicht kostenlos. Aktiviere in AI Studio unter „Billing“ die Abrechnung (ca. 3–7 Cent pro Bild).'
       : 'Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
     if (res.status >= 500) throw err('Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
     throw Object.assign(new Error('Gemini: ' + m), { raw: `${res.status} ${m}` });
