@@ -57,7 +57,7 @@
     padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; }
   .chip.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
-  input[type=text], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+  input[type=text], input[type=password], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
     background: var(--bg); color: var(--ink); font: inherit; }
   textarea { min-height: 60px; resize: vertical; }
   .portrait { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
@@ -260,7 +260,7 @@ function saveSettings() {
   try { localStorage.setItem('ankleide-cfg', JSON.stringify(cfg)); } catch {}
 }
 
-async function gemini(model, parts, generationConfig = {}) {
+async function geminiOnce(model, parts, generationConfig = {}) {
   if (!cfg.key) throw new Error('Kein Gemini-Schlüssel eingetragen. Tippe oben auf ⚙︎.');
   let res;
   try {
@@ -273,8 +273,12 @@ async function gemini(model, parts, generationConfig = {}) {
   if (!res.ok) {
     const m = data?.error?.message || `Fehler ${res.status}`;
     if (res.status === 400 && /API key/i.test(m)) throw new Error('Der Gemini-Schlüssel ist ungültig. Prüfe ihn unter ⚙︎.');
-    if (res.status === 404) throw new Error(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`);
-    if (res.status === 429) throw new Error('Gemini-Kontingent erreicht. Warte kurz oder prüfe dein Kontingent in AI Studio.');
+    const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next });
+    if (res.status === 404) throw err(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`, false, true);
+    if (res.status === 429) throw err(/billing|quota/i.test(m) && !/demand|overload/i.test(m)
+      ? 'Gemini-Kontingent erreicht. Für Bilder musst du in AI Studio eventuell die Abrechnung aktivieren.'
+      : 'Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
+    if (res.status >= 500) throw err('Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
     throw new Error('Gemini: ' + m);
   }
   const out = data?.candidates?.[0]?.content?.parts || [];
@@ -282,6 +286,28 @@ async function gemini(model, parts, generationConfig = {}) {
   return out;
 }
 const img = im => ({ inline_data: { mime_type: im.mime || 'image/jpeg', data: im.data } });
+
+// Bei Überlastung: kurz warten und wiederholen, dann auf Ersatzmodelle ausweichen
+const FALLBACK_TEXT = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const FALLBACK_IMAGE = ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function gemini(model, parts, generationConfig = {}) {
+  const pool = /image|banana/.test(model) ? FALLBACK_IMAGE : FALLBACK_TEXT;
+  const models = [model, ...pool.filter(m => m !== model)];
+  let last;
+  for (const m of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await geminiOnce(m, parts, generationConfig); }
+      catch (e) {
+        last = e;
+        if (!e.next) throw e;
+        if (!e.retry || attempt === 1) break;
+        await sleep(2000);
+      }
+    }
+  }
+  throw last;
+}
 async function geminiJson(parts) {
   const out = await gemini(cfg.textModel, parts, { responseMimeType: 'application/json', temperature: 0.6 });
   const text = out.map(p => p.text || '').join('');
