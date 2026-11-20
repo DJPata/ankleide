@@ -30,7 +30,7 @@
 
     <section class="card">
       <h2>1. Was hast du da?</h2>
-      <p class="hint">Fotografiere Kühlschrank, Schubladen, Vorratsschrank oder Obstkorb, gern mehrere nacheinander (bis zu 6). Danach auf „Zutaten erkennen“ tippen, dann wertet Gemini alle Fotos auf einmal aus.</p>
+      <p class="hint">Fotografiere Kühlschrank, Schubladen, Vorratsschrank oder Obstkorb, gern mehrere nacheinander (bis zu 6). Danach auf „Zutaten erkennen“ tippen, dann wertet Gemini alle Fotos auf einmal aus. Du willst einfach ein Rezept ohne Foto? Dann unten „Freies Rezept“ wählen.</p>
       <div class="row">
         <span class="btn file" id="photoLabel">📷 Foto hinzufügen<input id="photoInput" type="file" accept="image/*" multiple aria-label="Foto hinzufügen"></span>
         <button class="btn" id="scanBtn" hidden>🔍 Zutaten erkennen</button>
@@ -47,8 +47,13 @@
 
     <section class="card" data-open>
       <h2>2. Wie soll's werden?</h2>
+      <label>Zutaten</label>
+      <div class="chips" id="modes"></div>
+      <p class="hint" id="modeHint" style="margin:0"></p>
       <label>Zeit</label>
       <div class="chips" id="times"></div>
+      <label>Ernährung (mehrere möglich)</label>
+      <div class="chips" id="goals"></div>
       <label>Richtung<select id="styles"></select></label>
       <label>Oder eigener Wunsch<input id="custom" type="text" placeholder="z. B. etwas mit Ofen, ohne Fleisch, für Kinder"></label>
       <label>Personen<input id="persons" type="number" min="1" max="12" value="2" inputmode="numeric" style="max-width:120px"></label>
@@ -69,7 +74,11 @@
 <script>
 const TIMES = ['15 Min.', '30 Min.', '45 Min.', '1 Stunde', '2 Stunden+'];
 const STYLES = ['Schnell & einfach', 'Hausmannskost', 'Italienisch', 'Asiatisch', 'Orientalisch', 'Ottolenghi', 'Vegetarisch', 'Gesund & leicht', 'Sterneküche'];
-let state = load('hh-kueche', { ingredients: [], time: '30 Min.', style: 'Schnell & einfach' });
+let state = { mode: 'Darf einkaufen', goals: [], ...load('hh-kueche', { ingredients: [], time: '30 Min.', style: 'Schnell & einfach' }) };
+const MODES = ['Nur was da ist', 'Darf einkaufen', 'Freies Rezept'];
+const MODE_HINT = { 'Nur was da ist': 'Nur mit deinen Zutaten (plus Grundzutaten wie Salz, Öl, Mehl).', 'Darf einkaufen': 'Nutzt deine Zutaten, ein paar fehlende darf ich ergänzen.', 'Freies Rezept': 'Egal, was im Kühlschrank ist. Fehlendes kommt per Tipp auf die Einkaufsliste.' };
+const GOALS = ['Kalorienarm', 'Low Carb', 'High Protein', 'Vegetarisch', 'Vegan'];
+const GOAL_HINT = { 'Kalorienarm': 'kalorienarm, ca. 400–550 kcal pro Portion, viel Gemüse, sparsam mit Fett', 'Low Carb': 'kohlenhydratarm, höchstens ca. 25 g Kohlenhydrate pro Portion, keine Nudeln/Reis/Kartoffeln/Brot (oder Gemüse-Ersatz)', 'High Protein': 'eiweißreich für Fitness, mindestens ca. 35 g Eiweiß pro Portion', 'Vegetarisch': 'vegetarisch, kein Fleisch und kein Fisch', 'Vegan': 'vegan, keine tierischen Produkte' };
 let photos = [], recipe = null, previous = [];
 
 function persist() { save('hh-kueche', state); }
@@ -93,6 +102,19 @@ function renderThumbs() {
 
 function fillSelect(el, opts, cur, onPick) { el.innerHTML = opts.map(o => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join(''); el.onchange = () => onPick(el.value); }
 chipGroup($('#times'), TIMES, state.time, v => { state.time = v; persist(); });
+function renderModes() { chipGroup($('#modes'), MODES, state.mode, v => { state.mode = v; persist(); renderModes(); }); $('#modeHint').textContent = MODE_HINT[state.mode]; }
+renderModes();
+// Ernährungsziele: mehrere gleichzeitig wählbar
+function renderGoals() {
+  $('#goals').innerHTML = GOALS.map(g => `<button type="button" class="chip" aria-pressed="${state.goals.includes(g)}" data-g="${g}">${g}</button>`).join('');
+  $('#goals').querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+    const g = b.dataset.g; state.goals = state.goals.includes(g) ? state.goals.filter(x => x !== g) : [...state.goals, g];
+    if (g === 'Vegan' && state.goals.includes('Vegan')) state.goals = state.goals.filter(x => x !== 'Vegetarisch');
+    if (g === 'Vegetarisch' && state.goals.includes('Vegetarisch')) state.goals = state.goals.filter(x => x !== 'Vegan');
+    persist(); renderGoals();
+  });
+}
+renderGoals();
 fillSelect($('#styles'), STYLES, state.style, v => { state.style = v; $('#custom').value = ''; persist(); });
 renderIngredients(); requireKeyBanner();
 
@@ -130,23 +152,28 @@ ${state.ingredients.length ? `Schon bekannt (nicht nochmal nennen): ${JSON.strin
 };
 
 async function makeRecipe(btn) {
-  if (!state.ingredients.length) return showMsg('Fotografiere zuerst deinen Kühlschrank oder trag Zutaten ein.', 'warn');
+  // Ohne Zutaten geht es als freies Rezept
+  const mode = state.ingredients.length ? state.mode : 'Freies Rezept';
+  if (!state.ingredients.length && state.mode === 'Nur was da ist') return showMsg('Für „Nur was da ist“ fotografiere zuerst deinen Kühlschrank oder trag Zutaten ein. Oder wähle „Freies Rezept“.', 'warn', 6000);
   busy(btn, true, 'Koch denkt nach …');
   const style = $('#custom').value.trim() || state.style;
   const persons = Math.max(1, Math.min(12, +$('#persons').value || 2));
   try {
     recipe = await geminiJson(`Du bist ein kreativer, erfahrener Koch. Schlage EIN Rezept vor.
-Vorhandene Zutaten: ${state.ingredients.join(', ')}
+${mode === 'Freies Rezept' ? (state.ingredients.length ? `Im Kühlschrank wäre: ${state.ingredients.join(', ')} (darf genutzt werden, muss aber nicht).` : 'Es gibt keine Vorgaben zu vorhandenen Zutaten.') : `Vorhandene Zutaten: ${state.ingredients.join(', ')}`}
 Grundzutaten wie Salz, Pfeffer, Öl, Zucker, Mehl und Standardgewürze sind vorhanden.
 Maximale Zeit inkl. Vorbereitung: ${state.time}
 Richtung/Wunsch: ${style}${style === 'Sterneküche' ? ' (anspruchsvoll, schön angerichtet, aber mit Haushaltsmitteln machbar)' : style === 'Ottolenghi' ? ' (im Stil von Yotam Ottolenghi: gemüsebetont, nahöstlich-mediterran, viele frische Kräuter, Joghurt/Tahini, Granatapfel, Sumach, Za’atar, kräftige Säure und Texturkontraste)' : ''}
 Personen: ${persons}
-${previous.length ? 'NICHT nochmal vorschlagen: ' + previous.join(', ') + '\n' : ''}
-Nutze möglichst viel von den vorhandenen Zutaten. Wenige fehlende Zutaten sind ok, markiere sie mit "have": false.
+${state.goals.length ? `Ernährung (unbedingt einhalten): ${state.goals.map(g => GOAL_HINT[g]).join('; ')}.\n` : ''}${previous.length ? 'NICHT nochmal vorschlagen: ' + previous.join(', ') + '\n' : ''}
+${mode === 'Nur was da ist' ? 'Verwende NUR die vorhandenen Zutaten und Grundzutaten, nichts zusätzlich. Alle Zutaten haben "have": true.' : mode === 'Darf einkaufen' ? 'Nutze möglichst viel von den vorhandenen Zutaten. Wenige fehlende Zutaten sind ok, markiere sie mit "have": false.' : 'Wähle frei ein richtig gutes Rezept. Zutaten, die nicht in der Liste oben stehen und keine Grundzutaten sind, markiere mit "have": false.'}
+Schätze die Nährwerte PRO PORTION realistisch.
 Antworte NUR mit JSON auf Deutsch:
 {"title": "...", "description": "1 Satz, der Lust macht", "time": "z. B. 25 Min.", "difficulty": "leicht|mittel|anspruchsvoll",
  "ingredients": [{"name": "Zutat", "amount": "Menge für ${persons} Personen", "have": true}],
- "steps": ["kurze, klare Arbeitsschritte"], "tip": "ein Profi-Tipp"}`);
+ "steps": ["kurze, klare Arbeitsschritte"], "tip": "ein Profi-Tipp",
+ "nutrition": {"kcal": Zahl, "protein": Gramm, "carbs": Gramm, "fat": Gramm}}`);
+    recipe.goals = state.goals.slice();
     previous.push(recipe.title);
     renderRecipe();
   } catch (e) { showMsg(e.message); }
@@ -173,6 +200,8 @@ function renderRecipe(noScroll) {
     <h2>${esc(r.title)}</h2>
     <p style="margin:0">${esc(r.description)}</p>
     <div class="meta"><span class="pill">⏱ ${esc(r.time)}</span><span class="pill">${esc(r.difficulty)}</span><span class="pill">👥 ${esc($('#persons').value)}</span></div>
+    ${r.goals?.length ? `<div class="meta">${r.goals.map(g => `<span class="pill">🎯 ${esc(g)}</span>`).join('')}</div>` : ''}
+    ${r.nutrition && +r.nutrition.kcal ? `<p class="hint" style="margin:0">Pro Portion (geschätzt): <b style="color:var(--ink)">${Math.round(+r.nutrition.kcal)} kcal</b> · ${Math.round(+r.nutrition.protein || 0)} g Eiweiß · ${Math.round(+r.nutrition.carbs || 0)} g Kohlenhydrate · ${Math.round(+r.nutrition.fat || 0)} g Fett</p>` : ''}
     <h3 style="margin:6px 0 0;font-size:16px">Zutaten</h3>
     <ul class="list ing">${(r.ingredients || []).map(i => `<li class="${i.have === false ? 'need' : 'have'}">${esc(i.amount)} ${esc(i.name)}${i.have === false ? '<span class="n">fehlt</span>' : ''}</li>`).join('')}</ul>
     <h3 style="margin:6px 0 0;font-size:16px">Zubereitung</h3>
