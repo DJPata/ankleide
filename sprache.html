@@ -97,6 +97,8 @@
   </main>
 </div>
 <script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
 <script src="voice.js"></script>
 <script>
 let tab = 'todo';
@@ -155,6 +157,7 @@ $('#icsBtn').onclick = () => {
 };
 
 window.onVoiceApplied = ({ nT, nC }) => { tab = nT ? 'todo' : nC ? 'putzen' : tab; renderTasks(); };
+onSync(k => { if (k === TODO_KEY || k === CLEAN_KEY) renderTasks(); });
 renderTasks();
 </script>
 </body>

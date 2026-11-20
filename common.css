@@ -90,4 +90,5 @@ details summary { list-style: none; } details summary::-webkit-details-marker { 
 .fold.open > h2::after { transform: rotate(-135deg) translateY(-3px); }
 .fold:not(.open) { gap: 0; }
 .fold:not(.open) > :not(h2) { display: none !important; }
+.btn.small { padding: 8px 12px; font-size: 14px; }
 .btn.file.disabled { opacity: .45; pointer-events: none; }

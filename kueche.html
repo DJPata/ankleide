@@ -56,9 +56,16 @@
     </section>
 
     <section class="card" id="recipe" data-nofold hidden></section>
+
+    <section class="card">
+      <h2>⭐ Gemerkte Rezepte <span class="hint" id="savedCount"></span></h2>
+      <div id="saved"></div>
+    </section>
   </main>
 </div>
 <script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
 <script>
 const TIMES = ['15 Min.', '30 Min.', '45 Min.', '1 Stunde', '2 Stunden+'];
 const STYLES = ['Schnell & einfach', 'Hausmannskost', 'Italienisch', 'Asiatisch', 'Orientalisch', 'Ottolenghi', 'Vegetarisch', 'Gesund & leicht', 'Sterneküche'];
@@ -146,7 +153,20 @@ Antworte NUR mit JSON auf Deutsch:
   busy(btn, false);
 }
 
-function renderRecipe() {
+const REC_KEY = 'hh-rezepte';
+function renderSaved() {
+  const list = load(REC_KEY, []).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
+  $('#savedCount').textContent = list.length ? `(${list.length})` : '';
+  $('#saved').innerHTML = list.map(r => `<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:8px 0;margin:0">
+      <button class="btn secondary small" style="flex:1;text-align:left;justify-content:flex-start" data-open="${r.id}">${esc(r.title)}<span class="hint" style="margin:0 0 0 8px;font-size:12px">${esc(r.time || '')}</span></button>
+      <button class="btn secondary small" data-unsave="${r.id}" aria-label="${esc(r.title)} entfernen">×</button></div>`).join('')
+    || '<p class="hint">Noch keine. Tippe bei einem Rezept auf „⭐ Merken“.</p>';
+  $('#saved').querySelectorAll('[data-open]').forEach(b => b.onclick = () => { recipe = load(REC_KEY, []).find(x => x.id === b.dataset.open); if (recipe) renderRecipe(); });
+  $('#saved').querySelectorAll('[data-unsave]').forEach(b => b.onclick = () => { save(REC_KEY, load(REC_KEY, []).filter(x => x.id !== b.dataset.unsave)); renderSaved(); if (recipe) renderRecipe(true); });
+}
+onSync(k => { if (k === REC_KEY) renderSaved(); });
+
+function renderRecipe(noScroll) {
   const r = recipe, missing = (r.ingredients || []).filter(i => i.have === false);
   const box = $('#recipe'); box.hidden = false;
   box.innerHTML = `
@@ -160,15 +180,25 @@ function renderRecipe() {
     ${r.tip ? `<p class="banner ok" style="margin:4px 0 0">💡 ${esc(r.tip)}</p>` : ''}
     <div class="row">
       ${missing.length ? `<button class="btn" id="toList">🛒 ${missing.length} fehlende auf die Einkaufsliste</button>` : '<span class="hint">Du hast alles da.</span>'}
+      <button class="btn secondary" id="saveRec">${r.id && load(REC_KEY, []).some(x => x.id === r.id) ? '✓ Gemerkt' : '⭐ Merken'}</button>
       <button class="btn secondary" id="againBtn">Anderes Rezept</button>
     </div>`;
   $('#againBtn').onclick = () => makeRecipe($('#againBtn'));
+  $('#saveRec').onclick = () => {
+    const list = load(REC_KEY, []);
+    if (r.id && list.some(x => x.id === r.id)) return;
+    r.id ||= crypto.randomUUID();
+    list.push({ ...r, persons: $('#persons').value, savedAt: Date.now(), updatedAt: Date.now() }); save(REC_KEY, list);
+    $('#saveRec').textContent = '✓ Gemerkt'; renderSaved();
+    showMsg(hhSync?.household() ? 'Gemerkt. Deine Partnerin sieht es auch.' : 'Rezept gemerkt.', 'ok', 3000);
+  };
   if (missing.length) $('#toList').onclick = () => {
     const n = addToShoppingList(missing.map(i => `${i.name}${i.amount ? ' (' + i.amount + ')' : ''}`), r.title);
     $('#toList').textContent = n ? `✓ ${n} auf der Einkaufsliste` : '✓ Steht schon drauf'; $('#toList').disabled = true;
   };
-  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!noScroll) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+renderSaved();
 
 $('#recipeBtn').onclick = () => { previous = []; makeRecipe($('#recipeBtn')); };
 </script>

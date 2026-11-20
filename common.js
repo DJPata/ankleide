@@ -15,7 +15,31 @@ function getCfg() { try { return { textModel: DEFAULT_TEXT, ...JSON.parse(localS
 function setCfg(patch) { const c = { ...getCfg(), ...patch }; try { localStorage.setItem('ankleide-cfg', JSON.stringify(c)); } catch {} return c; }
 
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
-function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+// Gemeinsamer Haushalt: diese Listen werden mit der Partnerin geteilt (siehe sync.js)
+const SYNC_KEYS = ['hh-einkauf', 'hh-pflanzen', 'hh-todo', 'hh-putzplan', 'hh-rezepte'];
+const DIRTY_KEY = 'hh-sync-dirty';
+function save(key, val) {
+  try {
+    if (SYNC_KEYS.includes(key) && Array.isArray(val) && localStorage.getItem('hh-household')) markDirty(key, load(key, []), val);
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch {}
+  if (SYNC_KEYS.includes(key)) window.hhSync?.flush();
+}
+// Merkt sich geänderte und gelöschte Einträge, bis sie hochgeladen sind (klappt auch offline)
+function markDirty(key, prev, next) {
+  const before = new Map(prev.map(i => [i.id, JSON.stringify(i)]));
+  const dirty = load(DIRTY_KEY, {}); const d = dirty[key] ||= {};
+  for (const it of next) {
+    if (!it || !it.id) continue;
+    const old = before.get(it.id);
+    if (old !== JSON.stringify(it)) { if (!old || JSON.parse(old).updatedAt === it.updatedAt) it.updatedAt = Date.now(); d[it.id] = 1; }
+    before.delete(it.id);
+  }
+  for (const id of before.keys()) d[id] = 'del';
+  localStorage.setItem(DIRTY_KEY, JSON.stringify(dirty));
+}
+// Seiten können neu zeichnen, wenn die Partnerin etwas ändert
+function onSync(fn) { window.addEventListener('hh-sync', e => fn(e.detail?.key)); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 

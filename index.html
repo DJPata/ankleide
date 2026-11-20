@@ -93,6 +93,17 @@
       <a class="tile t-clean" href="putzen.html"><div class="ic">🧽</div><b>Home Cleaner</b><span>Foto machen, Putz-Anleitung bekommen</span></a>
     </div>
 
+    <section class="card" id="joinCard" data-nofold hidden>
+      <h2>👫 Einladung zum gemeinsamen Haushalt</h2>
+      <p class="hint">Dann seht ihr beide dieselbe Einkaufsliste, dieselben Pflanzen, Putz-Aufgaben, To-dos und gemerkten Rezepte. Dein Ankleidezimmer bleibt privat. Was du schon eingetragen hast, wird zusammengeführt.</p>
+      <div class="row"><button class="btn" id="joinBtn">Beitreten</button><button class="btn secondary" id="joinNo">Nein danke</button></div>
+    </section>
+
+    <details class="card" id="household">
+      <summary><span>👫 Gemeinsamer Haushalt <span id="hhBadge" style="color:var(--muted);font-weight:400;font-size:13px"></span></span></summary>
+      <div id="hhBody" style="margin-top:12px"></div>
+    </details>
+
     <details class="card" id="settings">
       <summary>⚙︎ Einstellungen</summary>
       <p class="hint">Alle Bereiche nutzen Google Gemini. Den Schlüssel bekommst du unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Er bleibt nur auf diesem Gerät.</p>
@@ -108,13 +119,16 @@
   </main>
 </div>
 <script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
 <script src="voice.js"></script>
 <script>
   const h = new Date().getHours();
   $('#hello').textContent = (h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend') + ' · ' + new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
   const cfg = getCfg();
   $('#apiKey').value = cfg.key || '';
-  if (!cfg.key) { $('#settings').open = true; }
+  if (!cfg.key && !new URLSearchParams(location.search).get('join')) { $('#settings').open = true; }
+  function updateCounts() {
   const open = load('hh-einkauf', []).filter(i => !i.done).length;
   if (open) $('#listCount').innerHTML = `<br><span class="count">${open} ${open === 1 ? 'Eintrag' : 'Einträge'} offen</span>`;
   const DAY = 864e5, today0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;
@@ -123,12 +137,59 @@
   const td = isoDay(), tasks = [...load('hh-todo', []), ...load('hh-putzplan', [])].filter(t => !t.done);
   const dueNow = tasks.filter(t => t.due && t.due <= td).length;
   if (tasks.length) $('#todoCount').innerHTML = `<br><span class="count">${tasks.length} offen${dueNow ? `, ${dueNow} heute fällig` : ''}</span>`;
+  }
+  updateCounts();
+  onSync(k => { updateCounts(); if (k === 'cfg') $('#apiKey').value = getCfg().key || ''; });
+
+  // ---------- Gemeinsamer Haushalt ----------
+  const join = new URLSearchParams(location.search).get('join');
+  function renderHousehold(st = hhSync.status()) {
+    const h = hhSync.household(), body = $('#hhBody');
+    $('#hhBadge').textContent = h ? (st.state === 'on' ? `· verbunden${st.members > 1 ? `, ${st.members} Geräte` : ''}` : st.state === 'error' ? '· Problem' : '· verbinde …') : '';
+    if (!hhSync.configured()) { body.innerHTML = '<p class="hint">Wird gerade eingerichtet. Sobald Firebase verbunden ist, kannst du hier deine Partnerin einladen.</p>'; return; }
+    if (!h) {
+      body.innerHTML = `<p class="hint">Teile Einkaufsliste, Pflanzen, Putzplan, To-dos und gemerkte Rezepte mit deiner Partnerin. Dein Ankleidezimmer bleibt privat. Ein Konto braucht ihr nicht, nur einen Einladungslink.</p>
+        <div class="row"><button class="btn" id="hhCreate">Haushalt erstellen</button></div>
+        <p class="hint" style="margin-top:14px">Du hast eine Einladung bekommen? Link hier einfügen:</p>
+        <div class="row"><input id="hhCode" type="text" placeholder="https://djpata.github.io/ankleide/?join=…" style="flex:1 1 200px" autocapitalize="off" spellcheck="false"><button class="btn secondary" id="hhJoin">Beitreten</button></div>`;
+      $('#hhCreate').onclick = async () => { const b = $('#hhCreate'); busy(b, true, 'Erstelle …'); try { await hhSync.create(); showMsg('Haushalt erstellt. Jetzt den Link an deine Partnerin schicken.', 'ok', 5000); } catch (e) { showMsg(e.message || String(e)); } busy(b, false); renderHousehold(); };
+      $('#hhJoin').onclick = () => doJoin($('#hhCode').value, $('#hhJoin'));
+      return;
+    }
+    const link = hhSync.inviteLink();
+    body.innerHTML = `${st.state === 'error' ? `<p class="banner warn">${esc(st.error)}</p>` : ''}
+      <p class="hint">${st.members > 1 ? `Ihr seid verbunden (${st.members} Geräte). Änderungen erscheinen beim anderen nach ein paar Sekunden.` : 'Noch allein. Schick deiner Partnerin diesen Link:'}</p>
+      <div class="row"><input type="text" readonly value="${esc(link)}" id="hhLink" style="flex:1 1 200px"></div>
+      <div class="row"><button class="btn" id="hhShare">📤 Einladung senden</button><button class="btn secondary" id="hhLeave">Haushalt verlassen</button></div>
+      <p class="hint" style="font-size:12px">Wer den Link hat, kann beitreten. Dein Gemini-Schlüssel wird im Haushalt mitgenutzt. Hat sie die App auf dem Home-Bildschirm, den Link dort unter „Gemeinsamer Haushalt“ einfügen.</p>`;
+    $('#hhShare').onclick = async () => {
+      const text = 'Lass uns die Haushaltshilfe zusammen nutzen: Einkaufsliste, Pflanzen, Putzplan und To-dos. Einfach öffnen und „Beitreten“ tippen:';
+      try { if (navigator.share) await navigator.share({ title: 'Haushaltshilfe', text, url: link }); else { await navigator.clipboard.writeText(text + ' ' + link); showMsg('Link kopiert.', 'ok', 3000); } } catch {}
+    };
+    $('#hhLeave').onclick = async e => {
+      const b = e.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Wirklich verlassen?'; return; }
+      await hhSync.leave(); showMsg('Du hast den Haushalt verlassen. Deine Einträge bleiben auf diesem Handy.', 'ok', 5000); renderHousehold();
+    };
+  }
+  async function doJoin(code, btn) {
+    busy(btn, true, 'Trete bei …');
+    try { await hhSync.join(code); $('#joinCard').hidden = true; history.replaceState(null, '', location.pathname); $('#apiKey').value = getCfg().key || ''; updateCounts(); showMsg('Willkommen im gemeinsamen Haushalt! Eure Listen werden jetzt zusammengeführt.', 'ok', 6000); }
+    catch (e) { showMsg(e.message || String(e)); }
+    busy(btn, false); renderHousehold();
+  }
+  window.addEventListener('hh-sync-status', e => renderHousehold(e.detail));
+  renderHousehold();
+  if (join && hhSync.configured() && hhSync.household()?.id !== join) {
+    $('#joinCard').hidden = false;
+    $('#joinBtn').onclick = () => doJoin(join, $('#joinBtn'));
+    $('#joinNo').onclick = () => { $('#joinCard').hidden = true; history.replaceState(null, '', location.pathname); };
+  }
   window.onVoiceApplied = () => location.reload();
   $('#saveKey').onclick = async () => {
     const btn = $('#saveKey'); setCfg({ key: $('#apiKey').value.trim() });
     if (!getCfg().key) { $('#keyResult').textContent = 'Bitte einen Schlüssel eintragen.'; return; }
     busy(btn, true, 'Teste …');
-    try { await gemini([{ text: 'Antworte nur mit: ok' }]); $('#keyResult').textContent = '✓ Verbindung zu Gemini klappt.'; }
+    try { await gemini([{ text: 'Antworte nur mit: ok' }]); $('#keyResult').textContent = '✓ Verbindung zu Gemini klappt.'; hhSync.pushKey(getCfg().key); }
     catch (e) { $('#keyResult').textContent = '✗ ' + e.message; }
     busy(btn, false);
   };

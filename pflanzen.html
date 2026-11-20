@@ -75,6 +75,8 @@
   </main>
 </div>
 <script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
 <script>
 const KEY = 'hh-pflanzen';
 let plants = load(KEY, []);
@@ -239,6 +241,7 @@ $('#icsBtn').onclick = e => {
 };
 
 render(); requireKeyBanner(); addMissingMl();
+onSync(k => { if (k === KEY) { plants = load(KEY, []); render(); } });
 </script>
 </body>
 </html>

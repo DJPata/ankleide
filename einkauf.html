@@ -50,6 +50,8 @@
   </main>
 </div>
 <script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
 <script>
 let list = load(LIST_KEY, []);
 const persist = () => save(LIST_KEY, list);
@@ -104,6 +106,7 @@ Antworte NUR mit JSON: {"items": [{"text": "...", "group": "...", "sources": [".
   } catch (e) { showMsg(e.message); }
   busy(btn, false);
 };
+onSync(() => { list = load(LIST_KEY, []); render(); });
 render();
 </script>
 </body>
