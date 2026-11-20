@@ -202,3 +202,20 @@ function foldSections() {
   });
 }
 document.addEventListener('DOMContentLoaded', foldSections);
+
+// Kalender-Datei (.ics) für Aufgaben mit Datum. Antippen öffnet auf dem iPhone „Kalender“ zum Übernehmen.
+function icsEsc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
+function tasksIcsUrl(ts) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Haushaltshilfe//Sprach-To-do//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const t of ts) {
+    const d = t.due.replace(/-/g, ''), hm = (t.time || '09:00').replace(':', '');
+    const [h, m] = (t.time || '09:00').split(':').map(Number); const endM = h * 60 + m + 30;
+    const end = `${String(Math.min(23, Math.floor(endM / 60))).padStart(2, '0')}${String(endM >= 24 * 60 ? 59 : endM % 60).padStart(2, '0')}`;
+    L.push('BEGIN:VEVENT', `UID:${t.id}@haushaltshilfe`, `DTSTAMP:${stamp}`, `DTSTART:${d}T${hm}00`, `DTEND:${d}T${end}00`,
+      `SUMMARY:${icsEsc((t.k === CLEAN_KEY ? '🧽 ' : '') + t.title)}`, ...(t.room ? [`LOCATION:${icsEsc(t.room)}`] : []),
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(t.title)}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(L.join('\r\n'));
+}

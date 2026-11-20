@@ -131,7 +131,6 @@ function renderTasks() {
 $('#clearDone').onclick = () => { const key = tab === 'todo' ? TODO_KEY : CLEAN_KEY; save(key, load(key, []).filter(t => !t.done)); renderTasks(); };
 
 // ---------- Kalender: Aufgaben mit Datum, die noch nicht im Kalender sind ----------
-function icsEsc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
 // Jeder lädt nur seine eigenen Termine (oder die für alle) in den eigenen iPhone-Kalender
 const me = () => window.hhSync?.household() ? hhSync.myId() : 'me';
 const inMyCal = t => (t.inCalBy || []).includes(me()) || (t.inCal && !t.inCalBy);
@@ -140,18 +139,7 @@ function updateIcs() {
   const a = $('#icsBtn'), ts = calTasks();
   if (!ts.length) { a.hidden = true; return; }
   a.hidden = false; a.textContent = `📅 ${ts.length} ${ts.length === 1 ? 'Termin' : 'Termine'} in Kalender`;
-  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Haushaltshilfe//Sprach-To-do//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
-  for (const t of ts) {
-    const d = t.due.replace(/-/g, ''), hm = (t.time || '09:00').replace(':', '');
-    const [h, m] = (t.time || '09:00').split(':').map(Number); const endM = h * 60 + m + 30;
-    const end = `${String(Math.min(23, Math.floor(endM / 60))).padStart(2, '0')}${String(endM >= 24 * 60 ? 59 : endM % 60).padStart(2, '0')}`;
-    L.push('BEGIN:VEVENT', `UID:${t.id}@haushaltshilfe`, `DTSTAMP:${stamp}`, `DTSTART:${d}T${hm}00`, `DTEND:${d}T${end}00`,
-      `SUMMARY:${icsEsc((t.k === CLEAN_KEY ? '🧽 ' : '') + t.title)}`, ...(t.room ? [`LOCATION:${icsEsc(t.room)}`] : []),
-      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(t.title)}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
-  }
-  L.push('END:VCALENDAR');
-  a.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(L.join('\r\n'));
+  a.href = tasksIcsUrl(ts);
   a.download = 'aufgaben.ics';
 }
 $('#icsBtn').onclick = () => {

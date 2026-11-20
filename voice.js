@@ -212,11 +212,42 @@ $('#applyBtn').onclick = () => {
   items.filter(i => i.list === 'putzen').forEach(i => clean.push({ id: i.id, title: i.title, room: i.room, due: i.due, done: false, updatedAt: now, ...forOf(i) }));
   save(TODO_KEY, todos); save(CLEAN_KEY, clean);
   });
+  // „In den Kalender“: Termine für mich (oder für alle) gleich zum Übernehmen anbieten
+  const myIdV = window.hhSync?.household() ? hhSync.myId() : 'me';
+  const cal = all.filter(i => i.calendar && i.due && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered) && (!forOf(i).for || forOf(i).for === myIdV))
+    .map(i => ({ id: i.id, title: i.title, due: i.due, time: i.time, room: i.room, k: i.list === 'putzen' ? CLEAN_KEY : TODO_KEY, hh: i.hh || activeHH() }));
+  const calNoDate = all.filter(i => i.calendar && !i.due).length;
+  try { if (cal.length) sessionStorage.setItem('hh-cal-offer', JSON.stringify(cal)); } catch {}
   const items = all;
   const other = all.filter(i => i.hh && i.hh !== activeHH()).length;
   const nT = items.filter(i => i.list === 'todo' || (i.list === 'pflanzen' && !(i.watered && i.plant))).length, nC = items.filter(i => i.list === 'putzen').length;
   preview = null; renderPreview();
   showMsg(`Übernommen: ${nShop} Einkauf, ${nC} Putzen, ${nT} To-do${nW ? `, ${nW} Pflanze${nW > 1 ? 'n' : ''} als gegossen markiert` : ''}.${other ? ` ${other} davon im anderen Haushalt (${[...new Set(all.filter(i => i.hh !== activeHH()).map(i => (hhList().find(h => h.id === i.hh) || {}).name))].join(', ')}).` : ''}`, 'ok', 6000);
+  if (calNoDate) setTimeout(() => showMsg('Für einen Kalender-Termin fehlte das Datum. Sag es nochmal mit Tag, z. B. „am Freitag um 10“.', 'warn', 7000), 50);
+  showCalOffer();
   window.onVoiceApplied?.({ nShop, nC, nT });
 };
+
+// Banner „📅 In Kalender übernehmen“ (bleibt auch nach dem Neuladen der Startseite stehen, bis man tippt oder schließt)
+function showCalOffer() {
+  let cal; try { cal = JSON.parse(sessionStorage.getItem('hh-cal-offer') || 'null'); } catch {}
+  document.getElementById('calOffer')?.remove();
+  if (!cal || !cal.length) return;
+  const box = document.createElement('section'); box.id = 'calOffer'; box.className = 'card'; box.dataset.nofold = '';
+  box.style.cssText = 'border-color:var(--accent);';
+  box.innerHTML = `<h2 style="margin:0">📅 In deinen Kalender?</h2>
+    <p class="hint" style="margin:6px 0 10px">${cal.map(t => `<b style="color:var(--ink)">${esc(t.title)}</b> · ${new Date(t.due + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })}${t.time ? ' ' + esc(t.time) : ''}`).join('<br>')}</p>
+    <div class="row"><a class="btn" id="calOfferBtn" download="termin.ics" href="${tasksIcsUrl(cal)}">📅 ${cal.length === 1 ? 'Termin' : cal.length + ' Termine'} übernehmen</a><button class="btn secondary" id="calOfferNo">Nicht jetzt</button></div>
+    <p class="hint" style="font-size:12px;margin-top:8px">Danach öffnet sich der iPhone-Kalender, dort auf „Hinzufügen“ tippen.</p>`;
+  const st = document.getElementById('status'); st.parentNode.insertBefore(box, st.nextSibling);
+  const done = () => { try { sessionStorage.removeItem('hh-cal-offer'); } catch {} box.remove(); };
+  box.querySelector('#calOfferNo').onclick = done;
+  box.querySelector('#calOfferBtn').onclick = () => setTimeout(() => {
+    const me = window.hhSync?.household() ? hhSync.myId() : 'me';
+    for (const t of cal) withHousehold(t.hh, () => { const l = load(t.k, []); const x = l.find(y => y.id === t.id); if (x) { x.inCalBy = [...new Set([...(x.inCalBy || []), me])]; x.updatedAt = Date.now(); save(t.k, l); } });
+    done(); window.dispatchEvent(new CustomEvent('hh-sync', { detail: { key: TODO_KEY } }));
+  }, 500);
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+showCalOffer();
 
