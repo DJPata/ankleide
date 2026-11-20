@@ -16,6 +16,7 @@
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; text-decoration: none; color: var(--ink);
     display: grid; gap: 6px; align-content: start; min-height: 150px; }
+  .tile:last-child:nth-child(odd) { grid-column: 1 / -1; min-height: 0; }
   .tile:active { transform: scale(.98); }
   .tile .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--soft); display: grid; place-items: center; font-size: 24px; }
   .tile b { font-size: 17px; }
@@ -30,7 +31,7 @@
 <div class="wrap">
   <header class="top">
     <h1>Haushaltshilfe</h1>
-    <p>Anziehen, kochen, einkaufen, putzen.</p>
+    <p>Anziehen, kochen, einkaufen, gießen, putzen.</p>
   </header>
   <main>
     <div id="status"></div>
@@ -38,6 +39,7 @@
       <a class="tile" href="ankleidezimmer.html"><div class="ic">👔</div><b>Ankleidezimmer</b><span>Outfit für jeden Anlass aus deinem Schrank</span></a>
       <a class="tile" href="kueche.html"><div class="ic">🍳</div><b>Küchenhilfe</b><span>Kühlschrank fotografieren, Rezept bekommen</span></a>
       <a class="tile" href="einkauf.html"><div class="ic">🛒</div><b>Einkaufsliste</b><span id="listCount">Alles, was noch fehlt</span></a>
+      <a class="tile" href="pflanzen.html"><div class="ic">🪴</div><b>Flora-Park</b><span id="plantCount">Gießplan für deine Pflanzen</span></a>
       <a class="tile" href="putzen.html"><div class="ic">🧽</div><b>Home Cleaner</b><span>Foto machen, Putz-Anleitung bekommen</span></a>
     </div>
 
@@ -62,6 +64,9 @@
   if (!cfg.key) { $('#settings').open = true; }
   const open = load('hh-einkauf', []).filter(i => !i.done).length;
   if (open) $('#listCount').innerHTML = `<span class="count">${open} ${open === 1 ? 'Eintrag' : 'Einträge'} offen</span>`;
+  const DAY = 864e5, t0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;
+  const duePlants = load('hh-pflanzen', []).filter(p => { const [y, m, d] = p.last.split('-').map(Number); return Math.round((t0 - new Date(y, m - 1, d).getTime()) / DAY) >= Math.max(1, Math.round(summer ? p.summer : p.winter) || 7); }).length;
+  if (duePlants) $('#plantCount').innerHTML = `<span class="count">💧 ${duePlants} ${duePlants === 1 ? 'Pflanze' : 'Pflanzen'} gießen</span>`;
   $('#saveKey').onclick = async () => {
     const btn = $('#saveKey'); setCfg({ key: $('#apiKey').value.trim() });
     if (!getCfg().key) { $('#keyResult').textContent = 'Bitte einen Schlüssel eintragen.'; return; }

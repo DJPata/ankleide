@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flora-Park · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .plant { display: grid; grid-template-columns: 44px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .plant:last-child { border-bottom: 0; }
+  .plant .em { width: 44px; height: 44px; border-radius: 12px; background: var(--soft); display: grid; place-items: center; font-size: 24px; }
+  .plant .info { min-width: 0; }
+  .plant .info b { display: block; overflow-wrap: anywhere; }
+  .plant .info small { color: var(--muted); display: block; }
+  .due { color: var(--danger); font-weight: 600; }
+  .soon { color: var(--accent); }
+  .btn.small { padding: 8px 12px; font-size: 14px; }
+  details.more { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
+  details.more summary { cursor: pointer; color: var(--accent); }
+  details.more p { margin: 6px 0; }
+  .todo-empty { color: var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Flora-Park</h1>
+    <p>Deine Pflanzen, wann sie Wasser brauchen.</p>
+  </header>
+  <main>
+    <div id="status"></div>
+
+    <section class="card">
+      <h2>💧 Heute gießen</h2>
+      <div id="todo"></div>
+    </section>
+
+    <section class="card">
+      <h2>Pflanze hinzufügen</h2>
+      <label>Wo steht sie?</label>
+      <div class="chips" id="where"></div>
+      <label>Raum oder Platz (optional)<input id="room" type="text" placeholder="z. B. Wohnzimmer Fenster, Balkon"></label>
+      <div class="row">
+        <span class="btn file">📷 Pflanze fotografieren<input id="photoInput" type="file" accept="image/*" aria-label="Pflanze fotografieren"></span>
+      </div>
+      <div class="row">
+        <input id="byName" type="text" placeholder="…oder Namen eintippen, z. B. Monstera" style="flex:1 1 200px">
+        <button class="btn secondary" id="nameBtn">Hinzufügen</button>
+      </div>
+      <p class="hint">Das Foto wird nur zur Erkennung an Gemini geschickt und nicht gespeichert.</p>
+    </section>
+
+    <section class="card">
+      <h2>Alle Pflanzen <span id="count" class="hint"></span></h2>
+      <div id="plants"></div>
+    </section>
+
+    <section class="card">
+      <h2>🔔 Erinnerungen aufs iPhone</h2>
+      <p class="hint">Lade die Gießtermine in deinen iPhone-Kalender. Dann erinnert dich dein iPhone um die gewählte Uhrzeit mit einer Mitteilung, auch wenn die App zu ist.</p>
+      <label>Uhrzeit der Erinnerung<input id="remTime" type="time" value="09:00" style="max-width:140px"></label>
+      <div class="row"><a class="btn" id="icsBtn" href="#">📅 In Kalender übernehmen</a></div>
+      <p class="hint" id="icsHint">Auf dem iPhone öffnet sich danach „Kalender“ → „Alle hinzufügen“. Neue Pflanzen kannst du später einzeln dazunehmen. Entfernst du eine Pflanze oder änderst den Rhythmus, lösche ihren Termin im Kalender (Termin antippen → „Termin löschen“ → „Alle zukünftigen“).</p>
+    </section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script>
+const KEY = 'hh-pflanzen';
+let plants = load(KEY, []);
+let where = 'Drinnen';
+const persist = () => save(KEY, plants);
+
+const DAY = 864e5;
+const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const isSummer = (d = new Date()) => d.getMonth() >= 3 && d.getMonth() <= 8; // April–September
+const interval = p => Math.max(1, Math.round(isSummer() ? p.summer : p.winter) || 7);
+const nextDate = p => new Date(parse(p.last).getTime() + interval(p) * DAY);
+const daysLeft = p => Math.round((nextDate(p) - today()) / DAY);
+
+function whenText(n) {
+  if (n < 0) return `<span class="due">${-n === 1 ? 'seit gestern' : `seit ${-n} Tagen`} fällig</span>`;
+  if (n === 0) return '<span class="due">heute</span>';
+  if (n === 1) return '<span class="soon">morgen</span>';
+  return `in ${n} Tagen`;
+}
+
+function render() {
+  plants.sort((a, b) => daysLeft(a) - daysLeft(b));
+  const due = plants.filter(p => daysLeft(p) <= 0);
+  $('#todo').innerHTML = !plants.length ? '<p class="hint">Füge unten deine erste Pflanze hinzu.</p>'
+    : due.length ? due.map(p => `<div class="plant"><div class="em">${esc(p.emoji || '🪴')}</div>
+        <div class="info"><b>${esc(p.name)}</b><small>${esc(p.water || '')}${p.room ? ' · ' + esc(p.room) : ''}</small><small>${whenText(daysLeft(p))}</small></div>
+        <button class="btn small" data-water="${p.id}">✓ Gegossen</button></div>`).join('')
+    : `<p class="todo-empty">✓ Heute muss nichts gegossen werden. Als Nächstes: ${esc(plants[0].name)} ${whenText(daysLeft(plants[0]))}.</p>`;
+  $('#count').textContent = plants.length ? `(${plants.length})` : '';
+  $('#plants').innerHTML = plants.map(p => `<div class="plant"><div class="em">${esc(p.emoji || '🪴')}</div>
+      <div class="info"><b>${esc(p.name)}</b><small>${esc(p.location)}${p.room ? ' · ' + esc(p.room) : ''} · alle ${interval(p)} Tage</small><small>Nächstes Gießen: ${whenText(daysLeft(p))}</small></div>
+      <button class="btn small secondary" data-water="${p.id}">💧</button>
+      <details class="more"><summary>Pflege &amp; Einstellungen</summary>
+        ${p.species ? `<p><i>${esc(p.species)}</i></p>` : ''}
+        <p>☀️ ${esc(p.light || '')}</p><p>💧 ${esc(p.water || '')}</p>${p.care ? `<p>🌱 ${esc(p.care)}</p>` : ''}${p.outdoorNote ? `<p>🌦 ${esc(p.outdoorNote)}</p>` : ''}${p.toxic ? `<p>⚠︎ ${esc(p.toxic)}</p>` : ''}
+        <div class="row"><label style="flex:1 1 120px">Sommer: alle … Tage<input type="number" min="1" max="60" value="${p.summer}" data-sum="${p.id}"></label>
+          <label style="flex:1 1 120px">Winter: alle … Tage<input type="number" min="1" max="90" value="${p.winter}" data-win="${p.id}"></label></div>
+        <div class="row" style="margin-top:8px"><button class="btn small secondary" data-del="${p.id}">Pflanze entfernen</button></div>
+      </details></div>`).join('') || '<p class="hint">Noch keine Pflanzen.</p>';
+  document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
+    const p = plants.find(x => x.id === b.dataset.water); p.last = iso(today()); persist(); render();
+    showMsg(`${p.name} gegossen. Nächstes Mal in ${interval(p)} Tagen.`, 'ok', 3000);
+  });
+  document.querySelectorAll('[data-sum]').forEach(i => i.onchange = () => { plants.find(x => x.id === i.dataset.sum).summer = +i.value || 7; plants.find(x => x.id === i.dataset.sum).inCal = false; persist(); render(); });
+  document.querySelectorAll('[data-win]').forEach(i => i.onchange = () => { plants.find(x => x.id === i.dataset.win).winter = +i.value || 14; plants.find(x => x.id === i.dataset.win).inCal = false; persist(); render(); });
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    if (b.dataset.confirm) { plants = plants.filter(x => x.id !== b.dataset.del); persist(); render(); return; }
+    b.dataset.confirm = '1'; b.textContent = 'Wirklich entfernen?';
+  });
+  updateIcs();
+}
+
+async function identify(images, nameHint) {
+  const btns = [$('#nameBtn')]; const label = $('#photoInput').parentElement;
+  label.firstChild.textContent = '⏳ Erkenne Pflanze …'; busy(btns[0], true, '…');
+  try {
+    const r = await geminiJson(`Du bist Gärtner und Pflanzenexperte. ${images.length ? 'Bestimme die Pflanze auf dem Foto.' : `Die Pflanze heißt: "${nameHint}".`}
+Standort: ${where}${$('#room').value.trim() ? ', ' + $('#room').value.trim() : ''}. Klima: Mitteleuropa (Deutschland).
+Gib einen realistischen Gießrhythmus für DIESEN Standort an (Sommer = April–September, Winter = Oktober–März; draußen im Winter oft gar nicht oder selten, bei Frostgefahr Hinweis zum Überwintern).
+Antworte NUR mit JSON auf Deutsch:
+{"name": "gängiger deutscher Name", "species": "botanischer Name", "emoji": "ein passendes Emoji",
+ "summer": Tage zwischen dem Gießen im Sommer (Zahl), "winter": Tage im Winter (Zahl),
+ "water": "wie viel und wie, kurz (z. B. durchdringend, wenn obere 2 cm trocken)",
+ "light": "Lichtbedarf kurz", "care": "wichtigster Pflegetipp (Dünger, Umtopfen, Schnitt)",
+ "outdoorNote": "nur bei draußen: Hinweis zu Regen/Frost, sonst leer",
+ "toxic": "Hinweis falls giftig für Katzen/Hunde/Kinder, sonst leer",
+ "confidence": "hoch|mittel|niedrig"}`, images);
+    if (!r.name) throw new Error('Ich konnte die Pflanze nicht erkennen. Versuch ein Foto, auf dem die Blätter gut zu sehen sind.');
+    const p = { id: crypto.randomUUID(), name: r.name, species: r.species, emoji: r.emoji, location: where, room: $('#room').value.trim(),
+      summer: +r.summer || 7, winter: +r.winter || 14, water: r.water, light: r.light, care: r.care, outdoorNote: r.outdoorNote, toxic: r.toxic,
+      last: iso(new Date(today().getTime() - DAY * 0)) };
+    plants.push(p); persist(); render();
+    showMsg(`${p.emoji || '🪴'} ${p.name} hinzugefügt${r.confidence === 'niedrig' ? ' (unsicher erkannt, prüf den Namen)' : ''}. Ich gehe davon aus, dass du sie heute gegossen hast.`, 'ok', 6000);
+    $('#byName').value = '';
+  } catch (e) { showMsg(e.message); }
+  label.firstChild.textContent = '📷 Pflanze fotografieren'; busy(btns[0], false);
+}
+
+$('#photoInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { identify([await shrink(f, 1024)]); } catch (err) { showMsg(err.message); }
+};
+$('#nameBtn').onclick = () => { const v = $('#byName').value.trim(); if (v) identify([], v); };
+$('#byName').onkeydown = e => { if (e.key === 'Enter') $('#nameBtn').click(); };
+chipGroup($('#where'), ['Drinnen', 'Draußen'], where, v => where = v);
+
+// ---------- Kalender (.ics) ----------
+// Nur Pflanzen exportieren, die noch nicht im Kalender sind (sonst doppelte Termine)
+const icsPlants = () => { const fresh = plants.filter(p => !p.inCal); return fresh.length ? fresh : plants; };
+function icsDate(d, hm) { const [h, m] = hm.split(':'); return `${iso(d).replace(/-/g, '')}T${h.padStart(2, '0')}${m.padStart(2, '0')}00`; }
+function icsText(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
+function buildIcs() {
+  const hm = $('#remTime').value || '09:00';
+  const [h, m] = hm.split(':').map(Number); const end = `${String(h).padStart(2, '0')}:${String(Math.min(59, m + 10)).padStart(2, '0')}`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const SUMMER = '4,5,6,7,8,9', WINTER = '10,11,12,1,2,3';
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Haushaltshilfe//Flora-Park//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Pflanzen gießen'];
+  for (const p of icsPlants()) {
+    let start = nextDate(p); if (start < today()) start = today();
+    // Zwei Serien je Pflanze: Sommer- und Winterrhythmus, damit die Erinnerungen das ganze Jahr laufen
+    for (const [tag, days, months] of [['s', p.summer, SUMMER], ['w', p.winter, WINTER]]) {
+      const n = Math.max(1, Math.round(+days || 7));
+      // Die gerade laufende Saison startet beim nächsten Gießtermin, die andere am ersten Tag ihrer Saison
+      const inSeason = (tag === 's') === isSummer();
+      const t = today(), y = t.getFullYear();
+      const first = inSeason ? start : tag === 's' ? new Date(t.getMonth() >= 3 ? y + 1 : y, 3, 1) : new Date(t.getMonth() >= 9 ? y + 1 : y, 9, 1);
+      lines.push('BEGIN:VEVENT', `UID:${p.id}-${tag}@haushaltshilfe`, `DTSTAMP:${stamp}`,
+        `DTSTART:${icsDate(first, hm)}`, `DTEND:${icsDate(first, end)}`,
+        `RRULE:FREQ=DAILY;INTERVAL=${n};BYMONTH=${months}`,
+        `SUMMARY:${icsText(`💧 ${p.name} gießen`)}`,
+        `DESCRIPTION:${icsText(`${p.water || ''}${p.room ? '\nPlatz: ' + p.room : ''}`)}`,
+        'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(p.name + ' gießen')}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
+    }
+  }
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
+}
+function updateIcs() {
+  const a = $('#icsBtn');
+  if (!plants.length) { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); a.style.opacity = .5; return; }
+  a.style.opacity = 1; a.removeAttribute('aria-disabled');
+  a.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(buildIcs());
+  a.download = 'pflanzen-giessen.ics';
+  const fresh = plants.filter(p => !p.inCal).length;
+  a.textContent = fresh === plants.length ? '📅 In Kalender übernehmen' : fresh ? `📅 ${fresh} neue ${fresh === 1 ? 'Pflanze' : 'Pflanzen'} in den Kalender` : '📅 Alle nochmal in den Kalender';
+}
+$('#remTime').value = load('hh-pflanzen-zeit', '09:00');
+$('#remTime').onchange = () => { save('hh-pflanzen-zeit', $('#remTime').value); updateIcs(); };
+$('#icsBtn').onclick = e => {
+  if (!plants.length) { e.preventDefault(); showMsg('Füge zuerst Pflanzen hinzu.', 'warn'); return; }
+  const list = icsPlants(); setTimeout(() => { list.forEach(p => p.inCal = true); persist(); updateIcs(); }, 500);
+};
+
+render(); requireKeyBanner();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ Vier Helfer in einer Handy-Web-App (Google Gemini):
 - **Ankleidezimmer** (`ankleidezimmer.html`): Kleiderschrank fotografieren, Anlass wählen, Outfit + Anprobe-Bild
 - **Küchenhilfe** (`kueche.html`): Kühlschrank fotografieren → Zutaten → Rezept nach Zeit und Richtung
 - **Einkaufsliste** (`einkauf.html`): abhaken, mit KI zusammenfassen und nach Abteilung sortieren
+- **Flora-Park** (`pflanzen.html`): Pflanzen fotografieren → Gießrhythmus, Heute-gießen-Liste, Erinnerungen über den iPhone-Kalender
 - **Home Cleaner** (`putzen.html`): Stelle fotografieren → Putz-Anleitung, Mittel, Sicherheitshinweise
 
 **App öffnen:** https://djpata.github.io/ankleide/
