@@ -57,6 +57,18 @@
   </header>
   <main>
     <div id="status"></div>
+    <section class="card voice-hero" id="welcome" data-nofold hidden>
+      <h2 id="wTitle">👋 Willkommen!</h2>
+      <p class="hint" id="wIntro" style="margin:0"></p>
+      <label id="wLinkLabel" hidden>Einladungslink (aus WhatsApp o. Ä. einfügen)<input id="wLink" type="text" placeholder="https://djpata.github.io/ankleide/?join=…" autocapitalize="off" spellcheck="false"></label>
+      <label>Wie heißt du?<input id="wName" type="text" placeholder="z. B. Lisa" autocomplete="given-name"></label>
+      <div id="wFlatBox">
+        <label>Wohnst du dort mit?</label>
+        <div class="chips" id="wFlat"></div>
+        <p class="hint" id="wFlatHint" style="margin:6px 0 0"></p>
+      </div>
+      <div class="row"><button class="btn" id="wGo">Los geht's</button><button class="btn secondary" id="wNo">Nicht jetzt</button></div>
+    </section>
     <section class="card voice-hero">
       <div class="mic-wrap">
         <button class="mic" id="mic" aria-label="Aufnahme starten">🎙️</button>
@@ -96,11 +108,6 @@
       <a class="tile t-clean" href="putzen.html"><div class="ic">🧽</div><b>Home Cleaner</b><span>Foto machen, Putz-Anleitung bekommen</span></a>
     </div>
 
-    <section class="card" id="joinCard" data-nofold hidden>
-      <h2>👫 Einladung zum gemeinsamen Haushalt</h2>
-      <p class="hint">Dann seht ihr beide dieselbe Einkaufsliste, dieselben Pflanzen, Putz-Aufgaben, To-dos und gemerkten Rezepte. Dein Ankleidezimmer bleibt privat. Bist du schon in einem anderen Haushalt, kommt dieser als zweiter dazu und du kannst oben umschalten.</p>
-      <div class="row"><button class="btn" id="joinBtn">Beitreten</button><button class="btn secondary" id="joinNo">Nein danke</button></div>
-    </section>
 
     <details class="card" id="household">
       <summary><span>👫 Gemeinsamer Haushalt <span id="hhBadge" style="color:var(--muted);font-weight:400;font-size:13px"></span></span></summary>
@@ -130,7 +137,7 @@
   $('#hello').textContent = (h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend') + ' · ' + new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
   const cfg = getCfg();
   $('#apiKey').value = cfg.key || '';
-  if (!cfg.key && !new URLSearchParams(location.search).get('join')) { $('#settings').open = true; }
+  if (!cfg.key && !new URLSearchParams(location.search).get('join') && !navigator.standalone) { $('#settings').open = true; }
   function updateCounts() {
   // Kalender-Kachel: was heute und morgen ansteht
   { const t = isoDay(), ents = calendarEntries(t, addDays(t, 1)).filter(e => e.type !== 'giessen');
@@ -201,16 +208,63 @@
     try {
       await hhSync.join(code); history.replaceState(null, '', location.pathname);
       if (had) return location.reload();
-      $('#joinCard').hidden = true; $('#apiKey').value = getCfg().key || ''; updateCounts(); showMsg('Willkommen im gemeinsamen Haushalt! Eure Listen werden jetzt zusammengeführt.', 'ok', 6000);
+      $('#apiKey').value = getCfg().key || ''; updateCounts(); showMsg('Willkommen im gemeinsamen Haushalt! Eure Listen werden jetzt zusammengeführt.', 'ok', 6000);
     } catch (e) { showMsg(e.message || String(e)); }
     busy(btn, false); document.activeElement?.blur?.(); renderHousehold();
   }
   window.addEventListener('hh-sync-status', e => renderHousehold(e.detail));
   renderHousehold();
-  if (join && hhSync.configured() && !hhSync.households().some(x => x.id === join)) {
-    $('#joinCard').hidden = false;
-    $('#joinBtn').onclick = () => doJoin(join, $('#joinBtn'));
-    $('#joinNo').onclick = () => { $('#joinCard').hidden = true; history.replaceState(null, '', location.pathname); };
+  // ---------- Willkommens-Dialog: über Einladungslink oder beim ersten Öffnen der Home-Bildschirm-App ----------
+  const FLAT = ['Ja, gleiche Wohnung', 'Nein, eigene Wohnung'];
+  let flat = FLAT[0], invite = null;
+  async function showWelcome(code) {
+    const first = !hhSync.household();
+    $('#welcome').hidden = false;
+    $('#wName').value = localStorage.getItem('hh-me-name') || '';
+    $('#wLinkLabel').hidden = !!code;
+    $('#wFlatBox').hidden = !first; // wer schon einen Haushalt hat, tritt nur dazu
+    const renderFlat = () => { chipGroup($('#wFlat'), FLAT, flat, v => { flat = v; renderFlat(); });
+      $('#wFlatHint').textContent = flat === FLAT[0] ? 'Ihr teilt Einkaufsliste, Pflanzen, Putzplan, To-dos und Kalender. Was du schon eingetragen hast, kommt mit dazu.'
+        : `Du trittst bei und bekommst zusätzlich deinen eigenen Haushalt für deine Wohnung. Oben kannst du jederzeit umschalten.`; };
+    renderFlat();
+    if (code) {
+      $('#wIntro').textContent = 'Einen Moment, ich schaue mir die Einladung an …';
+      try { invite = await hhSync.peek(code); $('#wTitle').textContent = '👋 Du wurdest eingeladen!'; $('#wIntro').textContent = `Einladung in „${hhSync.nameOf(invite)}“. Sag kurz, wer du bist.`; }
+      catch (e) { $('#wIntro').textContent = e.message; }
+    } else {
+      $('#wTitle').textContent = '👋 Willkommen!';
+      $('#wIntro').textContent = 'Hat dir jemand einen Einladungslink geschickt? Dann füg ihn hier ein. Sonst tippe auf „Nicht jetzt“.';
+    }
+  }
+  $('#wNo').onclick = () => { $('#welcome').hidden = true; save('hh-welcome-done', true); history.replaceState(null, '', location.pathname); };
+  $('#wGo').onclick = async () => {
+    const btn = $('#wGo'), name = $('#wName').value.trim(), code = invite?.id || $('#wLink').value.trim();
+    if (!code) return showMsg('Bitte den Einladungslink einfügen.', 'warn', 4000);
+    if (!name) { $('#wName').focus(); return showMsg('Wie heißt du? Dann wissen die anderen, wer was eingetragen hat.', 'warn', 4000); }
+    busy(btn, true, 'Richte ein …');
+    try {
+      const first = !hhSync.household();
+      localStorage.setItem('hh-me-name', name);
+      if (first && flat === FLAT[1]) {
+        // Eigene Wohnung: zuerst den eigenen Haushalt (deine bisherigen Einträge kommen dorthin), dann der Einladung beitreten
+        const own = await hhSync.create(`Haushalt ${name}`);
+        await hhSync.join(code);
+        await hhSync.setMyName(name);
+        await hhSync.switchTo(own, { noReload: true });
+      } else {
+        await hhSync.join(code);
+        await hhSync.setMyName(name);
+      }
+      save('hh-welcome-done', true);
+      sessionStorage.setItem('hh-msg', first && flat === FLAT[1] ? `Fertig, ${name}! Du bist im eingeladenen Haushalt und hast deinen eigenen „Haushalt ${name}“. Oben kannst du umschalten.` : `Willkommen, ${name}! Ihr teilt jetzt eure Listen und den Kalender.`);
+      location.replace(location.pathname);
+    } catch (e) { showMsg(e.message || String(e)); busy(btn, false); }
+  };
+  if (hhSync.configured()) {
+    if (join && !hhSync.households().some(x => x.id === join)) showWelcome(join);
+    else if (join) history.replaceState(null, '', location.pathname);
+    // Home-Bildschirm-App: eigener Speicher, deshalb beim ersten Öffnen nach dem Link fragen
+    else if (!hhSync.household() && !load('hh-welcome-done', false) && (navigator.standalone || matchMedia('(display-mode: standalone)').matches)) showWelcome('');
   }
   window.onVoiceApplied = () => { try { sessionStorage.setItem('hh-msg', $('#status').innerText); } catch {} location.reload(); };
   try { const m = sessionStorage.getItem('hh-msg'); if (m) { sessionStorage.removeItem('hh-msg'); showMsg(m, 'ok', 6000); } } catch {}

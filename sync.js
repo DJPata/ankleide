@@ -123,8 +123,10 @@
   const flushAll = () => households().forEach(h => flush(h.id));
 
   // Änderungen der anderen übernehmen: neuere Version gewinnt, eigene noch nicht hochgeladene Änderungen bleiben
-  function applyRemote(k, docs) {
-    const list = load(k, []); const dirty = load(DIRTY_KEY, {})[k] || {};
+  function applyRemote(k, docs, id = hid) {
+    const key = x => (id === hid ? x : sk(id, x));
+    const rd = (x, f) => { try { return JSON.parse(localStorage.getItem(key(x))) ?? f; } catch { return f; } };
+    const list = rd(k, []); const dirty = rd(DIRTY_KEY, {})[k] || {};
     let changed = false;
     for (const r of docs) {
       if (dirty[r.id]) continue;
@@ -134,7 +136,7 @@
       if (i < 0) { list.push(item); changed = true; }
       else if ((item.updatedAt || 0) > (list[i].updatedAt || 0)) { list[i] = item; changed = true; }
     }
-    if (changed) { localStorage.setItem(k, JSON.stringify(list)); window.dispatchEvent(new CustomEvent('hh-sync', { detail: { key: k } })); }
+    if (changed) { localStorage.setItem(key(k), JSON.stringify(list)); window.dispatchEvent(new CustomEvent('hh-sync', { detail: { key: k, hh: id } })); }
   }
 
   function listen() {
@@ -159,6 +161,14 @@
         const docs = snap.docChanges().filter(c => c.type !== 'removed' && !c.doc.metadata.hasPendingWrites).map(c => c.doc.data());
         if (docs.length) applyRemote(k, docs);
       }, e => listenError(e, col(k))));
+    }
+    // Kalender über alle Haushalte: Termine der anderen Haushalte ebenfalls mitlesen (getrennte Wohnungen, ein gemeinsamer Kalender)
+    for (const h of households()) {
+      if (h.id === id) continue;
+      unsubs.push(fb.onSnapshot(fb.collection(db, 'households', h.id, col(TERM_KEY)), snap => {
+        const docs = snap.docChanges().filter(c => c.type !== 'removed' && !c.doc.metadata.hasPendingWrites).map(c => c.doc.data());
+        if (docs.length) applyRemote(TERM_KEY, docs, h.id);
+      }, e => console.warn('Termine anderer Haushalt', h.id, e)));
     }
   }
 
@@ -263,8 +273,17 @@
       if (first) markAllDirty();
       await start(); return id;
     },
+    parseId: idOrLink => String(idOrLink || '').trim().match(/(?:join=)?([a-z0-9]{20,})\s*$/i)?.[1] || '',
+    // Einladung ansehen, ohne beizutreten (Name des Haushalts für den Willkommens-Dialog)
+    async peek(idOrLink) {
+      const id = this.parseId(idOrLink); if (!id) throw new Error('Das sieht nicht wie ein Einladungslink aus.');
+      await boot();
+      const snap = await fb.getDoc(fb.doc(db, 'households', id)).catch(e => { throw new Error(friendly(e)); });
+      if (!snap.exists()) throw new Error('Diese Einladung gibt es nicht (mehr).');
+      return { id, name: snap.data().name || '', members: (snap.data().members || []).length };
+    },
     async join(idOrLink) {
-      const id = String(idOrLink || '').trim().match(/(?:join=)?([a-z0-9]{20,})\s*$/i)?.[1];
+      const id = this.parseId(idOrLink);
       if (!id) throw new Error('Das sieht nicht wie ein Einladungslink aus.');
       if (households().some(h => h.id === id)) { if (household()?.id !== id) await this.switchTo(id, { noReload: true }); return id; }
       await boot();

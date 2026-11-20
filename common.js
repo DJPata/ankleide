@@ -232,7 +232,12 @@ const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); retu
 // Alle Einträge zwischen from und to (jeweils YYYY-MM-DD, inklusive), sortiert nach Tag und Uhrzeit
 function calendarEntries(from, to) {
   const out = [];
-  for (const t of load(TERM_KEY, [])) if (t.date >= from && t.date <= to) out.push({ type: 'termin', date: t.date, time: t.time || '', title: t.title, ref: t });
+  // Termine aus ALLEN Haushalten (gemeinsamer Kalender auch bei getrennten Wohnungen), der Rest nur aus dem gewählten
+  const active = (load('hh-household', null) || {}).id || '';
+  const hhs = (window.hhSync?.households() || []).filter(h => h.id !== active);
+  const fromStore = id => { try { return JSON.parse(localStorage.getItem(`hh-store:${id}:${TERM_KEY}`)) || []; } catch { return []; } };
+  for (const [hh, list] of [[active, load(TERM_KEY, [])], ...hhs.map(h => [h.id, fromStore(h.id)])])
+    for (const t of list) if (t.date >= from && t.date <= to) out.push({ type: 'termin', date: t.date, time: t.time || '', title: t.title, ref: t, hh });
   for (const t of load(TODO_KEY, [])) if (t.due && !t.done && t.due >= from && t.due <= to) out.push({ type: t.kind === 'pflanzen' ? 'pflanze' : 'todo', date: t.due, time: t.time || '', title: t.title, ref: t });
   for (const t of load(CLEAN_KEY, [])) if (t.due && !t.done && t.due >= from && t.due <= to) out.push({ type: 'putzen', date: t.due, time: '', title: t.title + (t.room ? ' · ' + t.room : ''), ref: t });
   // Gießen: nächster Termin (überfällige zählen heute) und die folgenden im gleichen Rhythmus

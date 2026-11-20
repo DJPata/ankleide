@@ -36,6 +36,7 @@
   .ev .acts a, .ev .acts button { background: none; border: 0; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 6px; text-decoration: none; }
   .who { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--soft); color: var(--ink); margin-left: 4px; vertical-align: 1px; }
   .who.gem { background: #26221c; color: var(--accent); }
+  .who.hh { background: none; border: 1px solid var(--line); color: var(--muted); }
   .daylabel { margin: 14px 0 2px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
   .daylabel:first-child { margin-top: 0; }
   .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
@@ -96,6 +97,9 @@ let month = sel.slice(0, 7); // YYYY-MM
 let editing = null, who = GEM;
 
 const people = () => (window.hhSync?.people() || []);
+const activeId = () => window.hhSync?.household()?.id || '';
+const shortHH = id => { const h = (window.hhSync?.households() || []).find(x => x.id === id); return h ? hhSync.nameOf(h).replace(/^Haushalt\s+/i, '') : ''; };
+let editHH = '';
 function whoChoices() {
   const p = people(); const names = p.map(x => x.me ? 'Ich' : x.name);
   if (!names.includes('Ich')) names.unshift('Ich');
@@ -118,11 +122,13 @@ function evHtml(e) {
   const t = e.ref, termin = e.type === 'termin';
   const w = termin || e.type === 'todo' || e.type === 'pflanze' || e.type === 'putzen' ? whoLabel(t) : '';
   const whoTag = termin ? (t.for ? `<span class="who">${esc(w === 'du' ? 'du' : w)}</span>` : `<span class="who gem">gemeinsam</span>`) : (w ? `<span class="who">${esc(w)}</span>` : '');
-  const ticks = termin ? (window.hhSync?.ticks(t, TERM_KEY) || '') : '';
-  const ics = termin && isForMe(t) ? `<a href="${tasksIcsUrl([{ id: t.id, title: t.title, due: t.date, time: t.time }])}" download="termin.ics" data-ics="${t.id}" title="In iPhone-Kalender übernehmen" aria-label="In iPhone-Kalender übernehmen">${(t.inCalBy || []).includes(myUid()) ? '✓' : '📲'}</a>` : '';
+  const ticks = termin && e.hh === activeId() ? (window.hhSync?.ticks(t, TERM_KEY) || '') : '';
+  const multi = (window.hhSync?.households() || []).length > 1;
+  const hhTag = termin && multi ? `<span class="who hh">🏠 ${esc(shortHH(e.hh))}</span>` : '';
+  const ics = termin && isForMe(t) ? `<a href="${tasksIcsUrl([{ id: t.id, title: t.title, due: t.date, time: t.time }])}" download="termin.ics" data-ics="${t.id}" data-hh="${e.hh || ''}" title="In iPhone-Kalender übernehmen" aria-label="In iPhone-Kalender übernehmen">${(t.inCalBy || []).includes(myUid()) ? '✓' : '📲'}</a>` : '';
   return `<div class="ev ${e.type}"><span class="tm">${e.time || (termin ? 'ganztägig' : '')}</span>
-    <span class="ti">${CAL_ICON[e.type]} ${termin ? `<b>${esc(e.title)}</b>` : esc(e.title)}${whoTag}${ticks}${t.note ? `<small>${esc(t.note)}</small>` : ''}</span>
-    <span class="acts">${ics}${termin ? `<button data-edit="${t.id}" aria-label="Bearbeiten">✎</button>` : ''}</span></div>`;
+    <span class="ti">${CAL_ICON[e.type]} ${termin ? `<b>${esc(e.title)}</b>` : esc(e.title)}${whoTag}${hhTag}${ticks}${t.note ? `<small>${esc(t.note)}</small>` : ''}</span>
+    <span class="acts">${ics}${termin ? `<button data-edit="${t.id}" data-hh="${e.hh || ''}" aria-label="Bearbeiten">✎</button>` : ''}</span></div>`;
 }
 
 function render() {
@@ -151,10 +157,10 @@ function render() {
     const keys = Object.keys(by);
     $('#dayList').innerHTML = keys.map(d => `<p class="daylabel">${dayLabel(d)}</p>${by[d].map(evHtml).join('')}`).join('') || '<p class="hint">In den nächsten zwei Monaten steht nichts an.</p>';
   }
-  $('#dayList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openForm(load(TERM_KEY, []).find(t => t.id === b.dataset.edit)));
+  $('#dayList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editHH = b.dataset.hh; openForm(withHousehold(editHH, () => load(TERM_KEY, [])).find(t => t.id === b.dataset.edit)); });
   $('#dayList').querySelectorAll('[data-ics]').forEach(a => a.addEventListener('click', () => setTimeout(() => {
-    const l = load(TERM_KEY, []); const t = l.find(x => x.id === a.dataset.ics);
-    if (t) { t.inCalBy = [...new Set([...(t.inCalBy || []), myUid()])]; t.updatedAt = Date.now(); save(TERM_KEY, l); render(); }
+    withHousehold(a.dataset.hh, () => { const l = load(TERM_KEY, []); const t = l.find(x => x.id === a.dataset.ics);
+      if (t) { t.inCalBy = [...new Set([...(t.inCalBy || []), myUid()])]; t.updatedAt = Date.now(); save(TERM_KEY, l); } }); render();
   }, 500)));
 }
 
@@ -169,22 +175,26 @@ function openForm(t) {
   $('#form').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!t) setTimeout(() => $('#fTitle').focus(), 300);
 }
 function closeForm() { $('#form').hidden = true; editing = null; }
-$('#newBtn').onclick = () => openForm();
+$('#newBtn').onclick = () => { editHH = ''; openForm(); };
 $('#fCancel').onclick = closeForm;
 $('#fSave').onclick = () => {
   const title = $('#fTitle').value.trim(), date = $('#fDate').value;
   if (!title || !date) return showMsg('Bitte Titel und Tag eintragen.', 'warn', 3000);
-  const l = load(TERM_KEY, []), now = Date.now();
+  const now = Date.now();
   const data = { title, date, time: $('#fTime').value || '', note: $('#fNote').value.trim(), ...whoToFields(who) };
-  if (editing) { const t = l.find(x => x.id === editing.id); if (t) { const moved = t.date !== date || t.time !== data.time; Object.assign(t, data, { updatedAt: now }); if (moved) t.inCalBy = []; } }
-  else l.push({ id: crypto.randomUUID(), ...data, createdAt: now, updatedAt: now });
-  save(TERM_KEY, l); sel = date; month = date.slice(0, 7); closeForm(); render();
+  // Neue Termine landen im gerade gewählten Haushalt, geänderte bleiben in ihrem
+  withHousehold(editing ? editHH : '', () => {
+    const l = load(TERM_KEY, []);
+    if (editing) { const t = l.find(x => x.id === editing.id); if (t) { const moved = t.date !== date || t.time !== data.time; Object.assign(t, data, { updatedAt: now }); if (moved) t.inCalBy = []; } }
+    else l.push({ id: crypto.randomUUID(), ...data, createdAt: now, updatedAt: now });
+    save(TERM_KEY, l);
+  }); sel = date; month = date.slice(0, 7); closeForm(); render();
   showMsg(editing ? 'Termin geändert.' : (window.hhSync?.household() ? 'Termin gespeichert. Alle im Haushalt sehen ihn.' : 'Termin gespeichert.'), 'ok', 3000);
 };
 $('#fDelete').onclick = e => {
   const b = e.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Wirklich löschen?'; return; }
   b.dataset.c = ''; b.textContent = 'Löschen';
-  save(TERM_KEY, load(TERM_KEY, []).filter(t => t.id !== editing.id)); closeForm(); render();
+  withHousehold(editHH, () => save(TERM_KEY, load(TERM_KEY, []).filter(t => t.id !== editing.id))); closeForm(); render();
 };
 $('#prev').onclick = () => { const [y, m] = month.split('-').map(Number); month = isoDay(new Date(y, m - 2, 1)).slice(0, 7); render(); };
 $('#next').onclick = () => { const [y, m] = month.split('-').map(Number); month = isoDay(new Date(y, m, 1)).slice(0, 7); render(); };
