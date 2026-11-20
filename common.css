@@ -43,6 +43,9 @@ input[type=text], input[type=password], input[type=number], input[type=date], in
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
 textarea { min-height: 64px; resize: vertical; }
 .thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+.thumbs .thumb { position: relative; }
+.thumbs .tx, .thumbs .ok { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border-radius: 50%; border: 0; display: grid; place-items: center; font-size: 15px; background: var(--card); color: var(--ink); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.thumbs .ok { background: var(--accent); color: var(--accent-ink); cursor: default; }
 .thumbs img { width: 88px; height: 88px; object-fit: cover; border-radius: 14px; background: var(--soft); }
 .banner { padding: 12px 14px; border-radius: 14px; font-size: 14px; }
 .banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
@@ -87,3 +90,4 @@ details summary { list-style: none; } details summary::-webkit-details-marker { 
 .fold.open > h2::after { transform: rotate(-135deg) translateY(-3px); }
 .fold:not(.open) { gap: 0; }
 .fold:not(.open) > :not(h2) { display: none !important; }
+.btn.file.disabled { opacity: .45; pointer-events: none; }

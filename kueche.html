@@ -30,9 +30,10 @@
 
     <section class="card">
       <h2>1. Was hast du da?</h2>
-      <p class="hint">Fotografiere Kühlschrank, Vorratsschrank oder Obstkorb. Tür ganz auf, gutes Licht. Mehrere Fotos gehen auch.</p>
+      <p class="hint">Fotografiere Kühlschrank, Schubladen, Vorratsschrank oder Obstkorb, gern mehrere nacheinander (bis zu 6). Danach auf „Zutaten erkennen“ tippen, dann wertet Gemini alle Fotos auf einmal aus.</p>
       <div class="row">
-        <span class="btn file">📷 Fotos hinzufügen<input id="photoInput" type="file" accept="image/*" multiple aria-label="Fotos hinzufügen"></span>
+        <span class="btn file" id="photoLabel">📷 Foto hinzufügen<input id="photoInput" type="file" accept="image/*" multiple aria-label="Foto hinzufügen"></span>
+        <button class="btn" id="scanBtn" hidden>🔍 Zutaten erkennen</button>
         <button class="btn secondary" id="clearBtn" hidden>Alles zurücksetzen</button>
       </div>
       <div class="thumbs" id="thumbs"></div>
@@ -71,7 +72,17 @@ function renderIngredients() {
   $('#ingredients').querySelectorAll('[data-i]').forEach(b => b.onclick = () => { state.ingredients.splice(+b.dataset.i, 1); persist(); renderIngredients(); });
   $('#clearBtn').hidden = !state.ingredients.length && !photos.length;
 }
-function renderThumbs() { $('#thumbs').innerHTML = photos.map(p => `<img src="${dataUrl(p)}" alt="">`).join(''); }
+const MAX_PHOTOS = 6;
+function renderThumbs() {
+  $('#thumbs').innerHTML = photos.map((p, i) => `<span class="thumb"><img src="${dataUrl(p)}" alt="Foto ${i + 1}">${p.done ? '<span class="ok">✓</span>' : `<button type="button" class="tx" data-rm="${i}" aria-label="Foto ${i + 1} entfernen">×</button>`}</span>`).join('');
+  $('#thumbs').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { photos.splice(+b.dataset.rm, 1); renderThumbs(); });
+  const pending = photos.filter(p => !p.done).length;
+  $('#scanBtn').hidden = !pending;
+  $('#scanBtn').textContent = `🔍 Zutaten erkennen (${pending} ${pending === 1 ? 'Foto' : 'Fotos'})`;
+  $('#photoLabel').firstChild.textContent = photos.length ? '📷 Weiteres Foto' : '📷 Foto hinzufügen';
+  $('#photoLabel').classList.toggle('disabled', photos.filter(p => !p.done).length >= MAX_PHOTOS);
+  $('#clearBtn').hidden = !state.ingredients.length && !photos.length;
+}
 
 function fillSelect(el, opts, cur, onPick) { el.innerHTML = opts.map(o => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join(''); el.onchange = () => onPick(el.value); }
 chipGroup($('#times'), TIMES, state.time, v => { state.time = v; persist(); });
@@ -88,22 +99,27 @@ $('#clearBtn').onclick = () => { state.ingredients = []; photos = []; persist();
 
 $('#photoInput').onchange = async e => {
   const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
-  const label = $('#photoInput').parentElement; let stopTick = () => {};
+  const room = MAX_PHOTOS - photos.filter(p => !p.done).length;
+  if (files.length > room) showMsg(`Höchstens ${MAX_PHOTOS} Fotos auf einmal. Ich nehme die ersten ${room}.`, 'warn', 4000);
+  try { photos.push(...await Promise.all(files.slice(0, room).map(f => shrink(f, 896)))); } catch (err) { showMsg(err.message); }
+  renderThumbs();
+};
+$('#scanBtn').onclick = async () => {
+  const imgs = photos.filter(p => !p.done); if (!imgs.length) return;
+  const btn = $('#scanBtn'); busy(btn, true, imgs.length > 1 ? `Erkenne Zutaten auf ${imgs.length} Fotos …` : 'Erkenne Zutaten …');
   try {
-    const imgs = await Promise.all(files.map(f => shrink(f, 1024)));
-    photos.push(...imgs); renderThumbs();
-    label.classList.add('disabled'); stopTick = tickText(label.firstChild, '⏳ Erkenne Zutaten …');
-    const r = await geminiJson(`Du bist Küchenassistent. Liste alle erkennbaren Lebensmittel und Zutaten auf diesen Fotos (Kühlschrank/Vorrat).
-Nenne sie kurz auf Deutsch, ohne Marken, mit grober Menge wenn gut erkennbar (z. B. "3 Eier", "Milch", "halbe Zucchini").
+    const r = await geminiJson(`Du bist Küchenassistent. ${imgs.length > 1 ? `Hier sind ${imgs.length} Fotos aus derselben Küche (z. B. verschiedene Fächer/Schubladen von Kühlschrank und Vorrat). Werte sie GEMEINSAM aus: jede Zutat nur EINMAL nennen, gleiche Dinge auf mehreren Fotos zusammenfassen (Mengen addieren, aber dasselbe Teil nicht doppelt zählen, wenn es offensichtlich zweimal fotografiert wurde).` : 'Hier ist ein Foto aus der Küche (Kühlschrank/Vorrat).'}
+Liste alle erkennbaren Lebensmittel und Zutaten kurz auf Deutsch, ohne Marken, mit grober Menge wenn gut erkennbar (z. B. "3 Eier", "Milch", "halbe Zucchini").
 Keine Gewürze, Getränke nur wenn zum Kochen nützlich. Unsicheres weglassen.
-Antworte NUR mit JSON: {"ingredients": ["..."]}`, imgs, { fast: true });
+${state.ingredients.length ? `Schon bekannt (nicht nochmal nennen): ${JSON.stringify(state.ingredients)}\n` : ''}Antworte NUR mit JSON: {"ingredients": ["..."]}`, imgs, { fast: true });
     const found = (r.ingredients || []).map(String);
     const before = state.ingredients.length;
     found.forEach(s => { if (!state.ingredients.some(x => x.toLowerCase() === s.toLowerCase())) state.ingredients.push(s); });
+    imgs.forEach(p => p.done = true);
     persist(); renderIngredients();
-    showMsg(found.length ? `${state.ingredients.length - before} Zutaten erkannt. Tippe eine an, um sie zu entfernen.` : 'Ich konnte auf dem Foto keine Zutaten erkennen. Versuch es mit mehr Licht.', found.length ? 'ok' : 'warn');
+    showMsg(found.length ? `${state.ingredients.length - before} Zutaten erkannt. Tippe eine an, um sie zu entfernen.` : 'Ich konnte auf den Fotos keine Zutaten erkennen. Versuch es mit mehr Licht.', found.length ? 'ok' : 'warn');
   } catch (err) { showMsg(err.message); }
-  stopTick(); label.firstChild.textContent = '📷 Fotos hinzufügen';
+  busy(btn, false); renderThumbs();
 };
 
 async function makeRecipe(btn) {
