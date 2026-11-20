@@ -118,7 +118,7 @@ function renderTasks() {
   list.sort((a, b) => (a.done - b.done) || ((a.due || '9999') .localeCompare(b.due || '9999')) || ((a.time || '').localeCompare(b.time || '')));
   $('#tasks').innerHTML = list.map(t => `<div class="task ${t.done ? 'done' : ''}">
       <input type="checkbox" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="${esc(t.title)} erledigt">
-      <span class="t">${t.priority === 'hoch' && !t.done ? '❗ ' : ''}${t.kind === 'pflanzen' ? '🪴 ' : ''}${esc(t.title)}${t.done ? '' : window.hhSync?.ticks(t, tab === 'todo' ? TODO_KEY : CLEAN_KEY) || ''}<small>${[t.forName ? (t.for === me() ? '👤 für dich' : '👤 für ' + esc(t.forName)) : '', t.room ? esc(t.room) : '', dueText(t)].filter(Boolean).join(' · ')}</small></span>
+      <span class="t">${t.priority === 'hoch' && !t.done ? '❗ ' : ''}${t.kind === 'pflanzen' ? '🪴 ' : ''}${esc(t.title)}${t.done ? '' : window.hhSync?.ticks(t, tab === 'todo' ? TODO_KEY : CLEAN_KEY) || ''}<small>${[t.forName ? (t.for === me() || (t.forName || '').toLowerCase() === (localStorage.getItem('hh-me-name') || '').toLowerCase() ? '👤 für dich' : '👤 für ' + esc(t.forName)) : '', t.room ? esc(t.room) : '', dueText(t)].filter(Boolean).join(' · ')}</small></span>
       <button class="del" data-del="${t.id}" aria-label="Löschen">×</button></div>`).join('')
     || `<p class="hint">Noch keine ${tab === 'todo' ? 'To-dos' : 'Putz-Aufgaben'}. Tippe oben aufs Mikrofon.</p>`;
   $('#tasks').querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => {
@@ -134,7 +134,7 @@ $('#clearDone').onclick = () => { const key = tab === 'todo' ? TODO_KEY : CLEAN_
 // Jeder lädt nur seine eigenen Termine (oder die für alle) in den eigenen iPhone-Kalender
 const me = () => window.hhSync?.household() ? hhSync.myId() : 'me';
 const inMyCal = t => (t.inCalBy || []).includes(me()) || (t.inCal && !t.inCalBy);
-function calTasks() { return [...load(TODO_KEY, []).map(t => ({ ...t, k: TODO_KEY })), ...load(CLEAN_KEY, []).map(t => ({ ...t, k: CLEAN_KEY }))].filter(t => t.due && !t.done && !inMyCal(t) && (!t.for || t.for === me())); }
+function calTasks() { return [...load(TODO_KEY, []).map(t => ({ ...t, k: TODO_KEY })), ...load(CLEAN_KEY, []).map(t => ({ ...t, k: CLEAN_KEY }))].filter(t => t.due && !t.done && !inMyCal(t) && (!t.for || t.for === me() || (t.for.startsWith('name:') && t.forName && t.forName.toLowerCase() === (localStorage.getItem('hh-me-name') || '').toLowerCase()))); }
 function updateIcs() {
   const a = $('#icsBtn'), ts = calTasks();
   if (!ts.length) { a.hidden = true; return; }
