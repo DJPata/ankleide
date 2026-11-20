@@ -25,6 +25,11 @@
   </header>
   <main>
     <div id="status"></div>
+    <section class="card" id="planCard" hidden>
+      <h2>Deine Putz-Aufgaben</h2>
+      <div id="plan"></div>
+      <p class="hint">Neue Aufgaben einfach im <a href="sprache.html">Sprach-To-do</a> einsprechen.</p>
+    </section>
     <section class="card">
       <h2>Was soll sauber werden?</h2>
       <p class="hint">Fotografiere die Stelle aus der Nähe, z. B. Kalk in der Toilette, Schimmel in der Fuge, die verkalkte Duschwand oder die ganze Küche.</p>
@@ -40,6 +45,13 @@
 <script src="common.js"></script>
 <script>
 let photo = null, guide = null;
+function renderPlan() {
+  const l = load(CLEAN_KEY, []).filter(t => !t.done).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+  $('#planCard').hidden = !l.length;
+  $('#plan').innerHTML = l.map(t => `<label style="display:flex;gap:10px;align-items:center;color:var(--ink);padding:6px 0"><input type="checkbox" data-id="${t.id}" style="width:22px;height:22px;accent-color:var(--accent)"> <span>${esc(t.title)}${t.room || t.due ? `<small style="display:block;color:var(--muted)">${[t.room, t.due && new Date(t.due + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })].filter(Boolean).join(' · ')}</small>` : ''}</span></label>`).join('');
+  $('#plan').querySelectorAll('input').forEach(c => c.onchange = () => { const all = load(CLEAN_KEY, []); const t = all.find(x => x.id === c.dataset.id); t.done = true; t.updatedAt = Date.now(); save(CLEAN_KEY, all); renderPlan(); });
+}
+renderPlan();
 $('#have').value = load('hh-putzen-have', '');
 $('#have').oninput = e => save('hh-putzen-have', e.target.value);
 requireKeyBanner();

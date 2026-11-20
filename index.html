@@ -31,10 +31,12 @@
 <div class="wrap">
   <header class="top">
     <h1>Haushaltshilfe</h1>
-    <p>Anziehen, kochen, einkaufen, gießen, putzen.</p>
+    <p>Anziehen, kochen, einkaufen, gießen, putzen und alles per Sprache.</p>
   </header>
   <main>
     <div id="status"></div>
+    <a class="tile" href="sprache.html" style="grid-column:1/-1;min-height:0;display:flex;align-items:center;gap:14px;margin-bottom:0">
+      <div class="ic">🎙️</div><div style="display:grid;gap:2px"><b>Sprach-To-do</b><span id="todoCount">Einfach reden: Einkauf, Putzen und To-dos landen von selbst in der richtigen Liste</span></div></a>
     <div class="tiles">
       <a class="tile" href="ankleidezimmer.html"><div class="ic">👔</div><b>Ankleidezimmer</b><span>Outfit für jeden Anlass aus deinem Schrank</span></a>
       <a class="tile" href="kueche.html"><div class="ic">🍳</div><b>Küchenhilfe</b><span>Kühlschrank fotografieren, Rezept bekommen</span></a>
@@ -67,6 +69,9 @@
   const DAY = 864e5, t0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;
   const duePlants = load('hh-pflanzen', []).filter(p => { const [y, m, d] = p.last.split('-').map(Number); return Math.round((t0 - new Date(y, m - 1, d).getTime()) / DAY) >= Math.max(1, Math.round(summer ? p.summer : p.winter) || 7); }).length;
   if (duePlants) $('#plantCount').innerHTML = `<span class="count">💧 ${duePlants} ${duePlants === 1 ? 'Pflanze' : 'Pflanzen'} gießen</span>`;
+  const td = isoDay(), tasks = [...load('hh-todo', []), ...load('hh-putzplan', [])].filter(t => !t.done);
+  const dueNow = tasks.filter(t => t.due && t.due <= td).length;
+  if (tasks.length) $('#todoCount').innerHTML = `<span class="count">${tasks.length} offen${dueNow ? `, ${dueNow} heute fällig` : ''}</span>`;
   $('#saveKey').onclick = async () => {
     const btn = $('#saveKey'); setCfg({ key: $('#apiKey').value.trim() });
     if (!getCfg().key) { $('#keyResult').textContent = 'Bitte einen Schlüssel eintragen.'; return; }

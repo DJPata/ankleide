@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sprach-To-do · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .mic-wrap { display: grid; justify-items: center; gap: 10px; padding: 8px 0; }
+  .mic { width: 112px; height: 112px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 44px; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,.15); transition: transform .15s; }
+  .mic:active { transform: scale(.96); }
+  .mic.rec { background: #c0392b; color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+  .mic:disabled { opacity: .5; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 16px rgba(192,57,43,.18); } }
+  @media (prefers-reduced-motion: reduce) { .mic.rec { animation: none; } }
+  .timer { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .transcript { font-size: 14px; color: var(--muted); font-style: italic; background: var(--soft); border-radius: 10px; padding: 10px 12px; margin: 0; }
+  .group h3 { margin: 6px 0 4px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .pcard { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; margin-bottom: 8px; background: var(--bg); }
+  .pcard.dupe { opacity: .6; }
+  .pcard .top { display: flex; gap: 8px; align-items: center; }
+  .pcard input.title { flex: 1; min-width: 0; padding: 8px 10px; font-weight: 600; background: var(--card); }
+  .pcard .x { background: none; border: 0; font-size: 22px; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  .pcard .opts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+  .pcard .opts .chip { padding: 5px 10px; font-size: 13px; }
+  .pcard .opts input[type=date], .pcard .opts select { width: auto; padding: 5px 8px; font-size: 13px; background: var(--card); }
+  .tag { font-size: 12px; background: var(--warn-bg); color: var(--warn-ink); border-radius: 999px; padding: 3px 8px; }
+  .task { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .task:last-child { border-bottom: 0; }
+  .task input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--accent); flex: none; }
+  .task .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .task .t small { display: block; color: var(--muted); }
+  .task.done .t { text-decoration: line-through; color: var(--muted); }
+  .task .del { background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; }
+  .over { color: var(--danger); font-weight: 600; }
+  .tabs { display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Sprach-To-do</h1>
+    <p>Einfach drauflos reden, die App sortiert.</p>
+  </header>
+  <main>
+    <div id="status"></div>
+
+    <section class="card">
+      <div class="mic-wrap">
+        <button class="mic" id="mic" aria-label="Aufnahme starten">🎙️</button>
+        <div id="micLabel"><b>Tippen und lossprechen</b></div>
+        <div class="timer" id="timer"></div>
+      </div>
+      <p class="hint" style="text-align:center">z. B. „Milch und zwei Gurken kaufen, am Samstag den Backofen putzen und morgen Oma anrufen.“ Nochmal tippen zum Beenden.</p>
+      <details>
+        <summary class="hint" style="cursor:pointer">Lieber tippen?</summary>
+        <div class="row" style="margin-top:8px">
+          <textarea id="typed" placeholder="Schreib einfach alles auf, was dir einfällt."></textarea>
+          <button class="btn secondary" id="typedBtn">Sortieren</button>
+        </div>
+      </details>
+      <p class="hint" style="font-size:12px">Die Aufnahme wird zur Auswertung an Google Gemini geschickt und danach nicht gespeichert.</p>
+    </section>
+
+    <section class="card" id="preview" hidden>
+      <h2>Bitte kurz prüfen</h2>
+      <p class="transcript" id="transcript"></p>
+      <div id="cards"></div>
+      <div class="row">
+        <button class="btn" id="applyBtn">✓ Alles übernehmen</button>
+        <button class="btn secondary" id="fixBtn">🎙️ Per Sprache ändern</button>
+        <button class="btn secondary" id="discardBtn">Verwerfen</button>
+      </div>
+      <p class="hint">Tippe auf „Einkauf“, „Putzen“ oder „To-do“, um ein Ziel zu ändern.</p>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>Meine Aufgaben</h2>
+        <div class="tabs chips" id="tabs"></div>
+      </div>
+      <div id="tasks"></div>
+      <div class="row" id="taskActions">
+        <a class="btn secondary" id="icsBtn" href="#">📅 Termine in Kalender</a>
+        <button class="btn secondary" id="clearDone">Erledigte löschen</button>
+      </div>
+      <p class="hint">Einkäufe landen auf der <a href="einkauf.html">Einkaufsliste</a>.</p>
+    </section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script>
+const LISTS = { einkauf: '🛒 Einkauf', putzen: '🧽 Putzen', todo: '✅ To-do' };
+const ORDER = ['einkauf', 'putzen', 'todo'];
+const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+let preview = null; // {transcript, items: [...]}
+let tab = 'todo';
+requireKeyBanner();
+
+// ---------- Aufnahme ----------
+let rec = null, stream = null, chunks = [], t0 = 0, tick = null, mode = 'new';
+const MAX_SEC = 120;
+function pickMime() {
+  if (!window.MediaRecorder) return null;
+  for (const m of ['audio/mp4', 'audio/aac', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']) {
+    try { if (MediaRecorder.isTypeSupported(m)) return m; } catch {}
+  }
+  return '';
+}
+function setMicUi(state) {
+  const mic = $('#mic');
+  mic.classList.toggle('rec', state === 'rec');
+  mic.disabled = state === 'busy';
+  mic.textContent = state === 'rec' ? '⏹' : state === 'busy' ? '⏳' : '🎙️';
+  mic.setAttribute('aria-label', state === 'rec' ? 'Aufnahme beenden' : 'Aufnahme starten');
+  $('#micLabel').innerHTML = state === 'rec' ? `<b>Ich höre zu …</b> ${mode === 'fix' ? '(Änderung)' : ''}` : state === 'busy' ? '<b>Sortiere …</b>' : '<b>Tippen und lossprechen</b>';
+  if (state !== 'rec') { clearInterval(tick); $('#timer').textContent = ''; }
+}
+function stopTracks() { try { stream?.getTracks().forEach(t => t.stop()); } catch {} stream = null; }
+
+async function startRec(m = 'new') {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return showMsg('Dein Browser kann hier nicht aufnehmen. Nutze „Lieber tippen?“.', 'warn');
+  mode = m;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { return showMsg(e.name === 'NotAllowedError' ? 'Bitte erlaube den Zugriff aufs Mikrofon. Auf dem iPhone fragt die App das bei jedem Start neu.' : 'Mikrofon konnte nicht gestartet werden.', 'warn'); }
+  const mime = pickMime();
+  try { rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+  catch { rec = new MediaRecorder(stream); }
+  chunks = [];
+  rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = onRecorded;
+  rec.start(1000);
+  t0 = Date.now(); setMicUi('rec');
+  tick = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    $('#timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    if (s >= MAX_SEC) stopRec();
+  }, 250);
+}
+function stopRec() { if (rec && rec.state !== 'inactive') rec.stop(); }
+
+async function onRecorded() {
+  const type = (rec.mimeType || chunks[0]?.type || 'audio/mp4').split(';')[0];
+  const blob = new Blob(chunks, { type }); stopTracks(); rec = null;
+  if (Date.now() - t0 < 800 || blob.size < 1000) { setMicUi('idle'); return showMsg('Die Aufnahme war zu kurz. Halte nichts gedrückt: einmal tippen, sprechen, nochmal tippen.', 'warn'); }
+  const data = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result.split(',')[1]); f.readAsDataURL(blob); });
+  await process({ audio: { mime: type, data } });
+}
+
+$('#mic').onclick = () => { if (rec && rec.state === 'recording') stopRec(); else startRec('new'); };
+$('#fixBtn').onclick = () => { if (rec && rec.state === 'recording') stopRec(); else { startRec('fix'); window.scrollTo({ top: 0, behavior: 'smooth' }); } };
+$('#typedBtn').onclick = () => { const t = $('#typed').value.trim(); if (t) { mode = preview ? mode : 'new'; process({ text: t }); } };
+
+// ---------- Gemini ----------
+// iPhone nimmt meist audio/mp4 auf. Gemini nennt offiziell m4a/aac, deshalb probieren wir nacheinander.
+function audioMimes(m) {
+  if (/mp4|m4a|aac/.test(m)) return [m === 'audio/aac' ? 'audio/aac' : 'audio/mp4', 'audio/m4a', 'audio/aac'];
+  if (/webm/.test(m)) return ['audio/webm', 'audio/ogg'];
+  return [m || 'audio/mp4', 'audio/m4a'];
+}
+function contextText() {
+  const d = new Date();
+  const shop = load(LIST_KEY, []).filter(i => !i.done).map(i => i.text);
+  return `Heute ist ${WD[d.getDay()]}, der ${isoDay(d)} (Zeitzone Europe/Berlin).
+Ziele: "einkauf" (etwas kaufen/besorgen), "putzen" (Reinigen, Aufräumen, Wäsche, Haushaltspflege), "todo" (alles andere: anrufen, Termine, Erledigungen, Reparaturen).
+Einkauf-Gänge (nur diese): ${AISLES.join(', ')}.
+Räume (nur diese): ${ROOMS.join(', ')}.
+Schon auf der Einkaufsliste: ${shop.length ? shop.join(', ') : '(leer)'}.`;
+}
+const FORMAT = `Antworte NUR mit JSON:
+{"transcript": "wörtliche Mitschrift (bei Text-Eingabe den Text)",
+ "items": [{"title": "kurz und klar, deutsch, ohne Datum im Titel", "list": "einkauf|putzen|todo",
+   "quantity": "Menge oder null", "aisle": "Gang oder null", "room": "Raum oder null",
+   "due": "YYYY-MM-DD oder null", "time": "HH:MM oder null", "priority": "hoch|mittel|niedrig",
+   "dupe": true wenn es schon auf der Einkaufsliste steht, sonst false}]}
+Regeln: Jeder gesagte Punkt ein eigener Eintrag. Korrekturen beim Sprechen ("ähm, nee, doch Donnerstag") berücksichtigen. "morgen", "Samstag", "übernächste Woche" in echte Daten umrechnen (nächstes Vorkommen ab heute). Nichts erfinden.`;
+
+async function process(input) {
+  setMicUi('busy');
+  try {
+    let prompt;
+    if (mode === 'fix' && preview) {
+      prompt = `Du verwaltest eine Vorschau von Haushalts-Einträgen. Die Person ${input.audio ? 'sagt in der Aufnahme' : 'schreibt'}, was geändert werden soll (hinzufügen, ändern, löschen, verschieben).
+${contextText()}
+Aktuelle Vorschau (JSON): ${JSON.stringify(preview.items.map(({ title, list, quantity, aisle, room, due, time, priority, dupe }) => ({ title, list, quantity, aisle, room, due, time, priority, dupe })))}
+${input.text ? 'Änderungswunsch: ' + input.text + '\n' : ''}Gib die KOMPLETTE neue Liste zurück. ${FORMAT}`;
+    } else {
+      prompt = `Du bist ein Haushalts-Assistent. ${input.audio ? 'Schreib die Sprachaufnahme mit und sortiere' : 'Sortiere'} alles Gesagte in einzelne Einträge.
+${contextText()}
+${input.text ? 'Text: ' + input.text + '\n' : ''}${FORMAT}`;
+    }
+    let r, lastErr;
+    const mimes = input.audio ? audioMimes(input.audio.mime) : [null];
+    for (const mime of mimes) {
+      try {
+        r = await geminiJson(prompt, mime ? [{ mime, data: input.audio.data }] : []);
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (!(e.raw && e.raw.startsWith('400'))) throw e; // nur bei Formatfehler nächstes Format probieren
+      }
+    }
+    if (!r) throw lastErr;
+    const items = (r.items || []).filter(i => i && i.title).map(i => ({
+      id: crypto.randomUUID(), title: String(i.title), list: LISTS[i.list] ? i.list : 'todo',
+      quantity: i.quantity || '', aisle: AISLES.includes(i.aisle) ? i.aisle : (i.list === 'einkauf' ? 'Sonstiges' : ''),
+      room: ROOMS.includes(i.room) ? i.room : '', due: /^\d{4}-\d{2}-\d{2}$/.test(i.due || '') ? i.due : '',
+      time: /^\d{2}:\d{2}$/.test(i.time || '') ? i.time : '', priority: ['hoch', 'mittel', 'niedrig'].includes(i.priority) ? i.priority : 'mittel',
+      dupe: !!i.dupe }));
+    // Duplikate auf der Einkaufsliste selbst nochmal prüfen
+    const shop = new Set(load(LIST_KEY, []).filter(i => !i.done).map(i => i.text.toLowerCase().replace(/\s*\(.*\)$/, '')));
+    items.forEach(i => { if (i.list === 'einkauf' && shop.has(i.title.toLowerCase())) i.dupe = true; });
+    if (!items.length) throw new Error('Ich habe keine Aufgaben herausgehört. Versuch es nochmal etwas lauter oder tippe den Text.');
+    preview = { transcript: r.transcript || input.text || '', items };
+    mode = 'new'; $('#typed').value = '';
+    renderPreview();
+  } catch (e) { showMsg(e.message); }
+  setMicUi('idle');
+}
+
+// ---------- Vorschau ----------
+function renderPreview() {
+  const box = $('#preview'); box.hidden = !preview;
+  if (!preview) return;
+  $('#transcript').textContent = preview.transcript ? `„${preview.transcript}“` : '';
+  $('#cards').innerHTML = ORDER.map(l => {
+    const its = preview.items.filter(i => i.list === l); if (!its.length) return '';
+    return `<div class="group"><h3>${LISTS[l]}</h3>${its.map(cardHtml).join('')}</div>`;
+  }).join('');
+  $('#cards').querySelectorAll('[data-k]').forEach(el => el.oninput = el.onchange = () => {
+    const it = preview.items.find(i => i.id === el.dataset.id); it[el.dataset.k] = el.value;
+  });
+  $('#cards').querySelectorAll('[data-list]').forEach(b => b.onclick = () => {
+    const it = preview.items.find(i => i.id === b.dataset.id); it.list = b.dataset.list;
+    if (it.list === 'einkauf' && !it.aisle) it.aisle = 'Sonstiges';
+    renderPreview();
+  });
+  $('#cards').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
+    preview.items = preview.items.filter(i => i.id !== b.dataset.rm); if (!preview.items.length) preview = null; renderPreview();
+  });
+  $('#cards').querySelectorAll('[data-keep]').forEach(b => b.onclick = () => { preview.items.find(i => i.id === b.dataset.keep).dupe = false; renderPreview(); });
+  $('#applyBtn').textContent = `✓ ${preview.items.filter(i => !i.dupe).length} übernehmen`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function cardHtml(i) {
+  const sw = ORDER.map(l => `<button class="chip" data-id="${i.id}" data-list="${l}" aria-pressed="${i.list === l}">${LISTS[l]}</button>`).join('');
+  const extra = i.list === 'einkauf'
+    ? `<input type="text" data-id="${i.id}" data-k="quantity" value="${esc(i.quantity)}" placeholder="Menge" style="width:90px;padding:5px 8px;font-size:13px">
+       <select data-id="${i.id}" data-k="aisle">${AISLES.map(a => `<option ${a === i.aisle ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select>`
+    : `${i.list === 'putzen' ? `<select data-id="${i.id}" data-k="room"><option value="">Raum …</option>${ROOMS.map(r => `<option ${r === i.room ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>` : ''}
+       <input type="date" data-id="${i.id}" data-k="due" value="${esc(i.due)}" aria-label="Datum">
+       ${i.list === 'todo' ? `<input type="time" data-id="${i.id}" data-k="time" value="${esc(i.time)}" aria-label="Uhrzeit" style="width:auto;padding:5px 8px;font-size:13px">` : ''}`;
+  return `<div class="pcard ${i.dupe ? 'dupe' : ''}">
+    <div class="top"><input class="title" type="text" data-id="${i.id}" data-k="title" value="${esc(i.title)}" aria-label="Titel">
+      <button class="x" data-rm="${i.id}" aria-label="Verwerfen">×</button></div>
+    ${i.dupe ? `<div class="opts"><span class="tag">steht schon auf der Einkaufsliste</span><button class="chip" data-keep="${i.id}">trotzdem hinzufügen</button></div>` : ''}
+    <div class="opts">${sw}</div>
+    <div class="opts">${extra}</div></div>`;
+}
+$('#discardBtn').onclick = () => { preview = null; renderPreview(); };
+$('#applyBtn').onclick = () => {
+  const items = preview.items.filter(i => !i.dupe);
+  const shop = items.filter(i => i.list === 'einkauf').map(i => ({ text: i.quantity ? `${i.title} (${i.quantity})` : i.title, group: i.aisle, source: '' }));
+  const nShop = addToShoppingList(shop, '');
+  const todos = load(TODO_KEY, []), clean = load(CLEAN_KEY, []);
+  const now = Date.now();
+  items.filter(i => i.list === 'todo').forEach(i => todos.push({ id: i.id, title: i.title, due: i.due, time: i.time, priority: i.priority, done: false, updatedAt: now }));
+  items.filter(i => i.list === 'putzen').forEach(i => clean.push({ id: i.id, title: i.title, room: i.room, due: i.due, done: false, updatedAt: now }));
+  save(TODO_KEY, todos); save(CLEAN_KEY, clean);
+  const nT = items.filter(i => i.list === 'todo').length, nC = items.filter(i => i.list === 'putzen').length;
+  preview = null; renderPreview();
+  showMsg(`Übernommen: ${nShop} Einkauf, ${nC} Putzen, ${nT} To-do.`, 'ok', 5000);
+  tab = nT ? 'todo' : nC ? 'putzen' : tab; renderTasks();
+};
+
+// ---------- Aufgabenlisten ----------
+function dueText(t) {
+  if (!t.due) return '';
+  const today = isoDay(); const d = new Date(t.due + 'T00:00');
+  const diff = Math.round((d - new Date(today + 'T00:00')) / 864e5);
+  const label = diff === 0 ? 'heute' : diff === 1 ? 'morgen' : diff === -1 ? 'gestern' : `${WD[d.getDay()].slice(0, 2)}, ${d.getDate()}.${d.getMonth() + 1}.`;
+  return `<span class="${diff < 0 && !t.done ? 'over' : ''}">${label}${t.time ? ' ' + t.time : ''}</span>`;
+}
+function renderTasks() {
+  chipGroup($('#tabs'), ['To-do', 'Putzen'], tab === 'todo' ? 'To-do' : 'Putzen', v => { tab = v === 'To-do' ? 'todo' : 'putzen'; renderTasks(); });
+  const key = tab === 'todo' ? TODO_KEY : CLEAN_KEY;
+  const list = load(key, []);
+  list.sort((a, b) => (a.done - b.done) || ((a.due || '9999') .localeCompare(b.due || '9999')) || ((a.time || '').localeCompare(b.time || '')));
+  $('#tasks').innerHTML = list.map(t => `<div class="task ${t.done ? 'done' : ''}">
+      <input type="checkbox" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="${esc(t.title)} erledigt">
+      <span class="t">${t.priority === 'hoch' && !t.done ? '❗ ' : ''}${esc(t.title)}<small>${[t.room ? esc(t.room) : '', dueText(t)].filter(Boolean).join(' · ')}</small></span>
+      <button class="del" data-del="${t.id}" aria-label="Löschen">×</button></div>`).join('')
+    || `<p class="hint">Noch keine ${tab === 'todo' ? 'To-dos' : 'Putz-Aufgaben'}. Tippe oben aufs Mikrofon.</p>`;
+  $('#tasks').querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => {
+    const l = load(key, []); const t = l.find(x => x.id === c.dataset.id); t.done = c.checked; t.updatedAt = Date.now(); save(key, l); renderTasks();
+  });
+  $('#tasks').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { save(key, load(key, []).filter(x => x.id !== b.dataset.del)); renderTasks(); });
+  $('#taskActions').hidden = !list.length;
+  updateIcs();
+}
+$('#clearDone').onclick = () => { const key = tab === 'todo' ? TODO_KEY : CLEAN_KEY; save(key, load(key, []).filter(t => !t.done)); renderTasks(); };
+
+// ---------- Kalender: Aufgaben mit Datum, die noch nicht im Kalender sind ----------
+function icsEsc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
+function calTasks() { return [...load(TODO_KEY, []).map(t => ({ ...t, k: TODO_KEY })), ...load(CLEAN_KEY, []).map(t => ({ ...t, k: CLEAN_KEY }))].filter(t => t.due && !t.done && !t.inCal); }
+function updateIcs() {
+  const a = $('#icsBtn'), ts = calTasks();
+  if (!ts.length) { a.hidden = true; return; }
+  a.hidden = false; a.textContent = `📅 ${ts.length} ${ts.length === 1 ? 'Termin' : 'Termine'} in Kalender`;
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Haushaltshilfe//Sprach-To-do//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  for (const t of ts) {
+    const d = t.due.replace(/-/g, ''), hm = (t.time || '09:00').replace(':', '');
+    const [h, m] = (t.time || '09:00').split(':').map(Number); const endM = h * 60 + m + 30;
+    const end = `${String(Math.min(23, Math.floor(endM / 60))).padStart(2, '0')}${String(endM >= 24 * 60 ? 59 : endM % 60).padStart(2, '0')}`;
+    L.push('BEGIN:VEVENT', `UID:${t.id}@haushaltshilfe`, `DTSTAMP:${stamp}`, `DTSTART:${d}T${hm}00`, `DTEND:${d}T${end}00`,
+      `SUMMARY:${icsEsc((t.k === CLEAN_KEY ? '🧽 ' : '') + t.title)}`, ...(t.room ? [`LOCATION:${icsEsc(t.room)}`] : []),
+      'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEsc(t.title)}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  a.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(L.join('\r\n'));
+  a.download = 'aufgaben.ics';
+}
+$('#icsBtn').onclick = () => {
+  const ts = calTasks();
+  setTimeout(() => { for (const k of [TODO_KEY, CLEAN_KEY]) { const l = load(k, []); l.forEach(t => { if (ts.some(x => x.id === t.id)) t.inCal = true; }); save(k, l); } updateIcs(); }, 500);
+};
+
+renderTasks();
+</script>
+</body>
+</html>

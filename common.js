@@ -98,16 +98,22 @@ function chipGroup(el, options, current, onPick) {
 // Einkaufsliste – von Küche und Home Cleaner aus befüllbar
 const LIST_KEY = 'hh-einkauf';
 function addToShoppingList(names, source) {
+  // names: Liste aus Texten oder Objekten {text, group}
   const list = load(LIST_KEY, []);
   const have = new Set(list.filter(i => !i.done).map(i => i.text.toLowerCase()));
   let added = 0;
   for (const n of names) {
-    const t = String(n).trim(); if (!t || have.has(t.toLowerCase())) continue;
-    list.push({ id: crypto.randomUUID(), text: t, done: false, source }); have.add(t.toLowerCase()); added++;
+    const obj = typeof n === 'object' && n ? n : { text: n };
+    const t = String(obj.text || '').trim(); if (!t || have.has(t.toLowerCase())) continue;
+    list.push({ id: crypto.randomUUID(), text: t, group: obj.group || '', done: false, source: obj.source ?? source, updatedAt: Date.now() }); have.add(t.toLowerCase()); added++;
   }
   save(LIST_KEY, list);
   return added;
 }
+const AISLES = ['Obst & Gemüse', 'Brot & Backwaren', 'Kühlregal', 'Fleisch & Fisch', 'Tiefkühl', 'Vorrat & Konserven', 'Gewürze & Backen', 'Getränke', 'Drogerie & Putzmittel', 'Sonstiges'];
+const ROOMS = ['Küche', 'Bad', 'Gäste-WC', 'Wohnzimmer', 'Schlafzimmer', 'Kinderzimmer', 'Flur', 'Arbeitszimmer', 'Balkon/Terrasse', 'Keller', 'Auto', 'Sonstiges'];
+const TODO_KEY = 'hh-todo', CLEAN_KEY = 'hh-putzplan';
+const isoDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 function requireKeyBanner() {
   if (!getCfg().key) showMsg('Trag zuerst auf der Startseite unter „Einstellungen“ deinen Gemini-Schlüssel ein.', 'warn', 0);
