@@ -20,6 +20,7 @@
   .plant .info small { color: var(--muted); display: block; }
   .due { color: var(--danger); font-weight: 600; }
   .soon { color: var(--accent); }
+  .ml { display: inline-block; color: var(--accent-ink); background: var(--accent); font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-right: 4px; }
   .btn.small { padding: 8px 12px; font-size: 14px; }
   details.more { grid-column: 1 / -1; font-size: 14px; color: var(--muted); }
   details.more summary { cursor: pointer; color: var(--accent); }
@@ -46,6 +47,8 @@
       <h2>Pflanze hinzufügen</h2>
       <label>Wo steht sie?</label>
       <div class="chips" id="where"></div>
+      <label>Topfgröße (für die Wassermenge)</label>
+      <div class="chips" id="pot"></div>
       <label>Raum oder Platz (optional)<input id="room" type="text" placeholder="z. B. Wohnzimmer Fenster, Balkon"></label>
       <div class="row">
         <span class="btn file">📷 Pflanze fotografieren<input id="photoInput" type="file" accept="image/*" aria-label="Pflanze fotografieren"></span>
@@ -75,7 +78,12 @@
 <script>
 const KEY = 'hh-pflanzen';
 let plants = load(KEY, []);
-let where = 'Drinnen';
+let where = 'Drinnen', pot = 'Weiß nicht';
+const POTS = ['Klein (bis 12 cm)', 'Mittel (13–20 cm)', 'Groß (21–30 cm)', 'Sehr groß / Kübel', 'Weiß nicht'];
+// Wassermenge pro Gießen in ml, je nach Saison
+const mlNow = p => isSummer() ? p.mlSummer : p.mlWinter;
+const fmtMl = ml => { ml = Math.round(+ml); if (!ml) return ''; return ml < 1000 ? `${ml} ml` : `${String(Math.round(ml / 100) / 10).replace('.', ',')} l`; };
+const mlTag = p => fmtMl(mlNow(p)) ? `<span class="ml">💧 ${fmtMl(mlNow(p))}</span>` : '';
 const persist = () => save(KEY, plants);
 
 const DAY = 864e5;
@@ -99,18 +107,21 @@ function render() {
   const due = plants.filter(p => daysLeft(p) <= 0);
   $('#todo').innerHTML = !plants.length ? '<p class="hint">Füge unten deine erste Pflanze hinzu.</p>'
     : due.length ? due.map(p => `<div class="plant"><div class="em">${esc(p.emoji || '🪴')}</div>
-        <div class="info"><b>${esc(p.name)}</b><small>${esc(p.water || '')}${p.room ? ' · ' + esc(p.room) : ''}</small><small>${whenText(daysLeft(p))}</small></div>
+        <div class="info"><b>${esc(p.name)}</b><small>${mlTag(p)}${esc(p.water || '')}${p.room ? ' · ' + esc(p.room) : ''}</small><small>${whenText(daysLeft(p))}</small></div>
         <button class="btn small" data-water="${p.id}">✓ Gegossen</button></div>`).join('')
     : `<p class="todo-empty">✓ Heute muss nichts gegossen werden. Als Nächstes: ${esc(plants[0].name)} ${whenText(daysLeft(plants[0]))}.</p>`;
   $('#count').textContent = plants.length ? `(${plants.length})` : '';
   $('#plants').innerHTML = plants.map(p => `<div class="plant"><div class="em">${esc(p.emoji || '🪴')}</div>
-      <div class="info"><b>${esc(p.name)}</b><small>${esc(p.location)}${p.room ? ' · ' + esc(p.room) : ''} · alle ${interval(p)} Tage</small><small>Nächstes Gießen: ${whenText(daysLeft(p))}</small></div>
+      <div class="info"><b>${esc(p.name)}</b><small>${esc(p.location)}${p.room ? ' · ' + esc(p.room) : ''} · alle ${interval(p)} Tage${fmtMl(mlNow(p)) ? ' · ' + fmtMl(mlNow(p)) : ''}</small><small>Nächstes Gießen: ${whenText(daysLeft(p))}</small></div>
       <button class="btn small secondary" data-water="${p.id}">💧</button>
       <details class="more"><summary>Pflege &amp; Einstellungen</summary>
         ${p.species ? `<p><i>${esc(p.species)}</i></p>` : ''}
         <p>☀️ ${esc(p.light || '')}</p><p>💧 ${esc(p.water || '')}</p>${p.care ? `<p>🌱 ${esc(p.care)}</p>` : ''}${p.outdoorNote ? `<p>🌦 ${esc(p.outdoorNote)}</p>` : ''}${p.toxic ? `<p>⚠︎ ${esc(p.toxic)}</p>` : ''}
         <div class="row"><label style="flex:1 1 120px">Sommer: alle … Tage<input type="number" min="1" max="60" value="${p.summer}" data-sum="${p.id}"></label>
           <label style="flex:1 1 120px">Winter: alle … Tage<input type="number" min="1" max="90" value="${p.winter}" data-win="${p.id}"></label></div>
+        <div class="row"><label style="flex:1 1 120px">Sommer: ml pro Gießen<input type="number" min="10" max="20000" step="50" inputmode="numeric" value="${p.mlSummer || ''}" data-mls="${p.id}"></label>
+          <label style="flex:1 1 120px">Winter: ml pro Gießen<input type="number" min="10" max="20000" step="50" inputmode="numeric" value="${p.mlWinter || ''}" data-mlw="${p.id}"></label></div>
+        <p class="hint" style="margin:0">1 Liter = 1000 ml. Ein normales Wasserglas sind etwa 250 ml.</p>
         <div class="row" style="margin-top:8px"><button class="btn small secondary" data-del="${p.id}">Pflanze entfernen</button></div>
       </details></div>`).join('') || '<p class="hint">Noch keine Pflanzen.</p>';
   document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
@@ -119,6 +130,8 @@ function render() {
   });
   document.querySelectorAll('[data-sum]').forEach(i => i.onchange = () => { plants.find(x => x.id === i.dataset.sum).summer = +i.value || 7; plants.find(x => x.id === i.dataset.sum).inCal = false; persist(); render(); });
   document.querySelectorAll('[data-win]').forEach(i => i.onchange = () => { plants.find(x => x.id === i.dataset.win).winter = +i.value || 14; plants.find(x => x.id === i.dataset.win).inCal = false; persist(); render(); });
+  for (const [attr, field] of [['mls', 'mlSummer'], ['mlw', 'mlWinter']])
+    document.querySelectorAll(`[data-${attr}]`).forEach(i => i.onchange = () => { const p = plants.find(x => x.id === i.dataset[attr]); p[field] = Math.round(+i.value) || 0; p.inCal = false; p.updatedAt = Date.now(); persist(); render(); });
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
     if (b.dataset.confirm) { plants = plants.filter(x => x.id !== b.dataset.del); persist(); render(); return; }
     b.dataset.confirm = '1'; b.textContent = 'Wirklich entfernen?';
@@ -131,19 +144,20 @@ async function identify(images, nameHint) {
   const stopTick = tickText(label.firstChild, '⏳ Erkenne Pflanze …'); busy(btns[0], true, '…');
   try {
     const r = await geminiJson(`Du bist Gärtner und Pflanzenexperte. ${images.length ? 'Bestimme die Pflanze auf dem Foto.' : `Die Pflanze heißt: "${nameHint}".`}
-Standort: ${where}${$('#room').value.trim() ? ', ' + $('#room').value.trim() : ''}. Klima: Mitteleuropa (Deutschland).
+Standort: ${where}${$('#room').value.trim() ? ', ' + $('#room').value.trim() : ''}. Topfgröße: ${pot === 'Weiß nicht' ? (images.length ? 'schätze sie anhand des Fotos' : 'unbekannt, nimm eine typische Größe für diese Pflanze an') : pot}. Klima: Mitteleuropa (Deutschland).
 Gib einen realistischen Gießrhythmus für DIESEN Standort an (Sommer = April–September, Winter = Oktober–März; draußen im Winter oft gar nicht oder selten, bei Frostgefahr Hinweis zum Überwintern).
 Antworte NUR mit JSON auf Deutsch:
 {"name": "gängiger deutscher Name", "species": "botanischer Name", "emoji": "ein passendes Emoji",
  "summer": Tage zwischen dem Gießen im Sommer (Zahl), "winter": Tage im Winter (Zahl),
- "water": "wie viel und wie, kurz (z. B. durchdringend, wenn obere 2 cm trocken)",
+ "mlSummer": Wassermenge pro Gießen im Sommer in Millilitern (Zahl, z. B. 250), "mlWinter": Wassermenge pro Gießen im Winter in ml (Zahl),
+ "water": "wie gießen, kurz (z. B. von unten, wenn obere 2 cm trocken)",
  "light": "Lichtbedarf kurz", "care": "wichtigster Pflegetipp (Dünger, Umtopfen, Schnitt)",
  "outdoorNote": "nur bei draußen: Hinweis zu Regen/Frost, sonst leer",
  "toxic": "Hinweis falls giftig für Katzen/Hunde/Kinder, sonst leer",
  "confidence": "hoch|mittel|niedrig"}`, images, { fast: true });
     if (!r.name) throw new Error('Ich konnte die Pflanze nicht erkennen. Versuch ein Foto, auf dem die Blätter gut zu sehen sind.');
     const p = { id: crypto.randomUUID(), name: r.name, species: r.species, emoji: r.emoji, location: where, room: $('#room').value.trim(),
-      summer: +r.summer || 7, winter: +r.winter || 14, water: r.water, light: r.light, care: r.care, outdoorNote: r.outdoorNote, toxic: r.toxic,
+      summer: +r.summer || 7, winter: +r.winter || 14, mlSummer: Math.round(+r.mlSummer) || 0, mlWinter: Math.round(+r.mlWinter) || 0, pot: pot === 'Weiß nicht' ? '' : pot, water: r.water, light: r.light, care: r.care, outdoorNote: r.outdoorNote, toxic: r.toxic,
       last: iso(today()), updatedAt: Date.now() };
     plants.push(p); persist(); render();
     showMsg(`${p.emoji || '🪴'} ${p.name} hinzugefügt${r.confidence === 'niedrig' ? ' (unsicher erkannt, prüf den Namen)' : ''}. Ich gehe davon aus, dass du sie heute gegossen hast.`, 'ok', 6000);
@@ -159,6 +173,23 @@ $('#photoInput').onchange = async e => {
 $('#nameBtn').onclick = () => { const v = $('#byName').value.trim(); if (v) identify([], v); };
 $('#byName').onkeydown = e => { if (e.key === 'Enter') $('#nameBtn').click(); };
 chipGroup($('#where'), ['Drinnen', 'Draußen'], where, v => where = v);
+chipGroup($('#pot'), POTS, pot, v => pot = v);
+
+// Ältere Pflanzen ohne Wassermenge einmalig nachrüsten (eine Anfrage für alle)
+async function addMissingMl() {
+  const miss = plants.filter(p => !p.mlSummer && !p.mlTried);
+  if (!miss.length || !getCfg().key) return;
+  try {
+    const r = await geminiJson(`Du bist Gärtner. Schätze für jede Pflanze die Wassermenge pro Gießen in Millilitern, passend zu Standort und Gießrhythmus (Klima Deutschland).
+Pflanzen (JSON): ${JSON.stringify(miss.map(p => ({ id: p.id, name: p.name, species: p.species || '', location: p.location, room: p.room || '', pot: p.pot || 'typische Größe', summerDays: p.summer, winterDays: p.winter })))}
+Antworte NUR mit JSON: {"plants": [{"id": "...", "mlSummer": Zahl, "mlWinter": Zahl}]}`, [], { fast: true });
+    let n = 0;
+    for (const x of r.plants || []) { const p = plants.find(q => q.id === x.id); if (p && +x.mlSummer) { p.mlSummer = Math.round(+x.mlSummer); p.mlWinter = Math.round(+x.mlWinter) || 0; p.updatedAt = Date.now(); n++; } }
+    miss.forEach(p => { if (!p.mlSummer) p.mlTried = true; });
+    persist(); render();
+    if (n) showMsg(`Wassermenge für ${n} ${n === 1 ? 'Pflanze' : 'Pflanzen'} ergänzt. Ändern kannst du sie unter „Pflege & Einstellungen“.`, 'ok', 5000);
+  } catch (e) { console.warn('ml nachrüsten', e); }
+}
 
 // ---------- Kalender (.ics) ----------
 // Nur Pflanzen exportieren, die noch nicht im Kalender sind (sonst doppelte Termine)
@@ -183,8 +214,8 @@ function buildIcs() {
       lines.push('BEGIN:VEVENT', `UID:${p.id}-${tag}@haushaltshilfe`, `DTSTAMP:${stamp}`,
         `DTSTART:${icsDate(first, hm)}`, `DTEND:${icsDate(first, end)}`,
         `RRULE:FREQ=DAILY;INTERVAL=${n};BYMONTH=${months}`,
-        `SUMMARY:${icsText(`💧 ${p.name} gießen`)}`,
-        `DESCRIPTION:${icsText(`${p.water || ''}${p.room ? '\nPlatz: ' + p.room : ''}`)}`,
+        `SUMMARY:${icsText(`💧 ${p.name} gießen${fmtMl(tag === 's' ? p.mlSummer : p.mlWinter) ? ' (' + fmtMl(tag === 's' ? p.mlSummer : p.mlWinter) + ')' : ''}`)}`,
+        `DESCRIPTION:${icsText(`${fmtMl(tag === 's' ? p.mlSummer : p.mlWinter) ? 'Menge: ' + fmtMl(tag === 's' ? p.mlSummer : p.mlWinter) + '\n' : ''}${p.water || ''}${p.room ? '\nPlatz: ' + p.room : ''}`)}`,
         'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(p.name + ' gießen')}`, 'TRIGGER:PT0M', 'END:VALARM', 'END:VEVENT');
     }
   }
@@ -207,7 +238,7 @@ $('#icsBtn').onclick = e => {
   const list = icsPlants(); setTimeout(() => { list.forEach(p => p.inCal = true); persist(); updateIcs(); }, 500);
 };
 
-render(); requireKeyBanner();
+render(); requireKeyBanner(); addMissingMl();
 </script>
 </body>
 </html>
