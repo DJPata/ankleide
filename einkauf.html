@@ -59,7 +59,7 @@ const persist = () => save(LIST_KEY, list);
 function itemHtml(i) {
   return `<div class="item ${i.done ? 'done' : ''}">
     <input type="checkbox" data-id="${i.id}" ${i.done ? 'checked' : ''} aria-label="${esc(i.text)} abhaken">
-    <span class="t">${esc(i.text)}${i.source ? `<span class="src">für ${esc(i.source)}</span>` : ''}</span>
+    <span class="t">${esc(i.text)}${i.done ? '' : window.hhSync?.ticks(i, LIST_KEY) || ''}${i.source ? `<span class="src">für ${esc(i.source)}</span>` : ''}</span>
     <button class="del" data-del="${i.id}" aria-label="Löschen">×</button></div>`;
 }
 function render() {
@@ -107,6 +107,7 @@ Antworte NUR mit JSON: {"items": [{"text": "...", "group": "...", "sources": [".
   busy(btn, false);
 };
 onSync(() => { list = load(LIST_KEY, []); render(); });
+window.hhSync?.markSeen(LIST_KEY);
 render();
 </script>
 </body>

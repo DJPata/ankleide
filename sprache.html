@@ -92,7 +92,7 @@
         <a class="btn secondary" id="icsBtn" href="#">📅 Termine in Kalender</a>
         <button class="btn secondary" id="clearDone">Erledigte löschen</button>
       </div>
-      <p class="hint">Einkäufe landen auf der <a href="einkauf.html">Einkaufsliste</a>.</p>
+      <p class="hint">Einkäufe landen auf der <a href="einkauf.html">Einkaufsliste</a>. Termine für deine Partnerin kommen nicht in deinen Kalender, sondern erscheinen bei ihr hier unter „📅 Termine in Kalender“.</p>
     </section>
   </main>
 </div>
@@ -118,7 +118,7 @@ function renderTasks() {
   list.sort((a, b) => (a.done - b.done) || ((a.due || '9999') .localeCompare(b.due || '9999')) || ((a.time || '').localeCompare(b.time || '')));
   $('#tasks').innerHTML = list.map(t => `<div class="task ${t.done ? 'done' : ''}">
       <input type="checkbox" data-id="${t.id}" ${t.done ? 'checked' : ''} aria-label="${esc(t.title)} erledigt">
-      <span class="t">${t.priority === 'hoch' && !t.done ? '❗ ' : ''}${t.kind === 'pflanzen' ? '🪴 ' : ''}${esc(t.title)}<small>${[t.room ? esc(t.room) : '', dueText(t)].filter(Boolean).join(' · ')}</small></span>
+      <span class="t">${t.priority === 'hoch' && !t.done ? '❗ ' : ''}${t.kind === 'pflanzen' ? '🪴 ' : ''}${esc(t.title)}${t.done ? '' : window.hhSync?.ticks(t, tab === 'todo' ? TODO_KEY : CLEAN_KEY) || ''}<small>${[t.forName ? (t.for === me() ? '👤 für dich' : '👤 für ' + esc(t.forName)) : '', t.room ? esc(t.room) : '', dueText(t)].filter(Boolean).join(' · ')}</small></span>
       <button class="del" data-del="${t.id}" aria-label="Löschen">×</button></div>`).join('')
     || `<p class="hint">Noch keine ${tab === 'todo' ? 'To-dos' : 'Putz-Aufgaben'}. Tippe oben aufs Mikrofon.</p>`;
   $('#tasks').querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => {
@@ -132,7 +132,10 @@ $('#clearDone').onclick = () => { const key = tab === 'todo' ? TODO_KEY : CLEAN_
 
 // ---------- Kalender: Aufgaben mit Datum, die noch nicht im Kalender sind ----------
 function icsEsc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
-function calTasks() { return [...load(TODO_KEY, []).map(t => ({ ...t, k: TODO_KEY })), ...load(CLEAN_KEY, []).map(t => ({ ...t, k: CLEAN_KEY }))].filter(t => t.due && !t.done && !t.inCal); }
+// Jeder lädt nur seine eigenen Termine (oder die für alle) in den eigenen iPhone-Kalender
+const me = () => window.hhSync?.household() ? hhSync.myId() : 'me';
+const inMyCal = t => (t.inCalBy || []).includes(me()) || (t.inCal && !t.inCalBy);
+function calTasks() { return [...load(TODO_KEY, []).map(t => ({ ...t, k: TODO_KEY })), ...load(CLEAN_KEY, []).map(t => ({ ...t, k: CLEAN_KEY }))].filter(t => t.due && !t.done && !inMyCal(t) && (!t.for || t.for === me())); }
 function updateIcs() {
   const a = $('#icsBtn'), ts = calTasks();
   if (!ts.length) { a.hidden = true; return; }
@@ -153,11 +156,12 @@ function updateIcs() {
 }
 $('#icsBtn').onclick = () => {
   const ts = calTasks();
-  setTimeout(() => { for (const k of [TODO_KEY, CLEAN_KEY]) { const l = load(k, []); l.forEach(t => { if (ts.some(x => x.id === t.id)) t.inCal = true; }); save(k, l); } updateIcs(); }, 500);
+  setTimeout(() => { for (const k of [TODO_KEY, CLEAN_KEY]) { const l = load(k, []); l.forEach(t => { if (ts.some(x => x.id === t.id)) { t.inCalBy = [...new Set([...(t.inCalBy || []), me()])]; t.updatedAt = Date.now(); } }); save(k, l); } updateIcs(); }, 500);
 };
 
 window.onVoiceApplied = ({ nT, nC }) => { tab = nT ? 'todo' : nC ? 'putzen' : tab; renderTasks(); };
-onSync(k => { if (k === TODO_KEY || k === CLEAN_KEY) renderTasks(); });
+onSync(k => { if (k === TODO_KEY || k === CLEAN_KEY || k === 'seen') renderTasks(); });
+window.hhSync?.markSeen([TODO_KEY, CLEAN_KEY]);
 renderTasks();
 </script>
 </body>

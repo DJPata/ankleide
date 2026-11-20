@@ -67,22 +67,32 @@ function audioMimes(m) {
   if (/webm/.test(m)) return ['audio/webm', 'audio/ogg'];
   return [m || 'audio/mp4', 'audio/m4a'];
 }
+// Mehrere Haushalte (z. B. getrennte Wohnungen): Einträge können in einen anderen Haushalt gehen
+const multiHH = () => (window.hhSync?.households() || []).length > 1;
+const hhList = () => (window.hhSync?.households() || []).map(h => ({ id: h.id, name: hhSync.nameOf(h) }));
+const activeHH = () => window.hhSync?.household()?.id || '';
+// Personen (für „in Patricks Kalender“): nur sinnvoll, wenn mindestens zwei Namen bekannt sind
+const people = () => window.hhSync?.people() || [];
+const multiPeople = () => people().length > 1;
+const DATED = ['todo', 'putzen', 'pflanzen'];
 function contextText() {
   const d = new Date();
   const shop = load(LIST_KEY, []).filter(i => !i.done).map(i => i.text);
   return `Heute ist ${WD[d.getDay()]}, der ${isoDay(d)} (Zeitzone Europe/Berlin).
 Ziele: "einkauf" (etwas kaufen/besorgen), "putzen" (Reinigen, Aufräumen, Wäsche, Haushaltspflege), "pflanzen" (gießen, düngen, umtopfen, schneiden, Pflanzen kaufen ausgenommen – das ist Einkauf), "todo" (alles andere: anrufen, Termine, Erledigungen, Reparaturen).
 Pflanzen im Flora-Park: ${plantNames().join(', ') || '(keine)'}.
-Einkauf-Gänge (nur diese): ${AISLES.join(', ')}.
+${multiPeople() ? `Personen im Haushalt: ${people().map(p => `"${p.name}"${p.me ? ' (spricht gerade)' : ''}`).join(', ')}. "for": wenn gesagt wird, für wen etwas ist ("in Patricks Kalender", "Lisa soll …", "für mich" = wer gerade spricht), genau einer dieser Namen, sonst null.
+` : ''}Einkauf-Gänge (nur diese): ${AISLES.join(', ')}.
 Räume (nur diese): ${ROOMS.join(', ')}.
-Schon auf der Einkaufsliste: ${shop.length ? shop.join(', ') : '(leer)'}.`;
+Schon auf der Einkaufsliste: ${shop.length ? shop.join(', ') : '(leer)'}.${multiHH() ? `
+Haushalte (getrennte Wohnungen): ${hhList().map(h => `"${h.name}"${h.id === activeHH() ? ' (gerade gewählt)' : ''}`).join(', ')}. Setze "household" nur, wenn ausdrücklich ein anderer Haushalt/eine andere Wohnung gemeint ist (z. B. "für Lisas Wohnung", "bei Lisa"), und zwar auf genau einen dieser Namen. Sonst null.` : ''}`;
 }
 const FORMAT = `Antworte NUR mit JSON:
 {"transcript": "wörtliche Mitschrift (bei Text-Eingabe den Text)",
  "items": [{"title": "kurz und klar, deutsch, ohne Datum im Titel", "list": "einkauf|putzen|pflanzen|todo", "plant": "Name aus dem Flora-Park oder null", "watered": true wenn gesagt wird, dass eine Pflanze SCHON gegossen wurde, sonst false,
    "quantity": "Menge oder null", "aisle": "Gang oder null", "room": "Raum oder null",
    "due": "YYYY-MM-DD oder null", "time": "HH:MM oder null", "priority": "hoch|mittel|niedrig",
-   "dupe": true wenn es schon auf der Einkaufsliste steht, sonst false}]}
+   "dupe": true wenn es schon auf der Einkaufsliste steht, sonst false, "household": "Name des Haushalts oder null", "for": "Name der Person oder null", "calendar": true wenn ausdrücklich in den Kalender eingetragen werden soll, sonst false}]}
 Regeln: Jeder gesagte Punkt ein eigener Eintrag. Korrekturen beim Sprechen ("ähm, nee, doch Donnerstag") berücksichtigen. "morgen", "Samstag", "übernächste Woche" in echte Daten umrechnen (nächstes Vorkommen ab heute). Nichts erfinden.`;
 
 async function process(input) {
@@ -92,7 +102,7 @@ async function process(input) {
     if (mode === 'fix' && preview) {
       prompt = `Du verwaltest eine Vorschau von Haushalts-Einträgen. Die Person ${input.audio ? 'sagt in der Aufnahme' : 'schreibt'}, was geändert werden soll (hinzufügen, ändern, löschen, verschieben).
 ${contextText()}
-Aktuelle Vorschau (JSON): ${JSON.stringify(preview.items.map(({ title, list, quantity, aisle, room, due, time, priority, dupe, plant, watered }) => ({ title, list, quantity, aisle, room, due, time, priority, dupe, plant, watered })))}
+Aktuelle Vorschau (JSON): ${JSON.stringify(preview.items.map(({ title, list, quantity, aisle, room, due, time, priority, dupe, plant, watered, hh, forName, calendar }) => ({ title, list, quantity, aisle, room, due, time, priority, dupe, plant, watered, for: forName || null, calendar, household: multiHH() ? (hhList().find(h => h.id === hh) || {}).name || null : null })))}
 ${input.text ? 'Änderungswunsch: ' + input.text + '\n' : ''}Gib die KOMPLETTE neue Liste zurück. ${FORMAT}`;
     } else {
       prompt = `Du bist ein Haushalts-Assistent. ${input.audio ? 'Schreib die Sprachaufnahme mit und sortiere' : 'Sortiere'} alles Gesagte in einzelne Einträge.
@@ -116,10 +126,13 @@ ${input.text ? 'Text: ' + input.text + '\n' : ''}${FORMAT}`;
       quantity: i.quantity || '', aisle: AISLES.includes(i.aisle) ? i.aisle : (i.list === 'einkauf' ? 'Sonstiges' : ''),
       room: ROOMS.includes(i.room) ? i.room : '', due: /^\d{4}-\d{2}-\d{2}$/.test(i.due || '') ? i.due : '',
       time: /^\d{2}:\d{2}$/.test(i.time || '') ? i.time : '', priority: ['hoch', 'mittel', 'niedrig'].includes(i.priority) ? i.priority : 'mittel',
-      dupe: !!i.dupe, plant: plantNames().find(n => n.toLowerCase() === String(i.plant || '').toLowerCase()) || '', watered: !!i.watered }));
+      dupe: !!i.dupe, plant: plantNames().find(n => n.toLowerCase() === String(i.plant || '').toLowerCase()) || '', watered: !!i.watered,
+      forName: (people().find(p => i.for && p.name.toLowerCase() === String(i.for).toLowerCase()) || {}).name || '',
+      calendar: !!i.calendar,
+      hh: (hhList().find(h => i.household && h.name.toLowerCase() === String(i.household).toLowerCase()) || hhList().find(h => i.household && (h.name.toLowerCase().includes(String(i.household).toLowerCase()) || String(i.household).toLowerCase().includes(h.name.toLowerCase()))) || {}).id || activeHH() }));
     // Duplikate auf der Einkaufsliste selbst nochmal prüfen
     const shop = new Set(load(LIST_KEY, []).filter(i => !i.done).map(i => i.text.toLowerCase().replace(/\s*\(.*\)$/, '')));
-    items.forEach(i => { if (i.list === 'einkauf' && shop.has(i.title.toLowerCase())) i.dupe = true; });
+    items.forEach(i => { if (i.list === 'einkauf' && i.hh === activeHH() && shop.has(i.title.toLowerCase())) i.dupe = true; else if (i.hh !== activeHH()) i.dupe = false; });
     if (!items.length) throw new Error('Ich habe keine Aufgaben herausgehört. Versuch es nochmal etwas lauter oder tippe den Text.');
     preview = { transcript: r.transcript || input.text || '', items };
     mode = 'new'; $('#typed').value = '';
@@ -148,6 +161,8 @@ function renderPreview() {
   $('#cards').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => {
     preview.items = preview.items.filter(i => i.id !== b.dataset.rm); if (!preview.items.length) preview = null; renderPreview();
   });
+  $('#cards').querySelectorAll('[data-for]').forEach(b => b.onclick = () => { preview.items.find(i => i.id === b.dataset.id).forName = b.dataset.for; renderPreview(); });
+  $('#cards').querySelectorAll('[data-hh]').forEach(b => b.onclick = () => { preview.items.find(i => i.id === b.dataset.id).hh = b.dataset.hh; renderPreview(); });
   $('#cards').querySelectorAll('[data-keep]').forEach(b => b.onclick = () => { preview.items.find(i => i.id === b.dataset.keep).dupe = false; renderPreview(); });
   $('#applyBtn').textContent = `✓ ${preview.items.filter(i => !i.dupe).length} übernehmen`;
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -169,29 +184,39 @@ function cardHtml(i) {
       <button class="x" data-rm="${i.id}" aria-label="Verwerfen">×</button></div>
     ${i.dupe ? `<div class="opts"><span class="tag">steht schon auf der Einkaufsliste</span><button class="chip" data-keep="${i.id}">trotzdem hinzufügen</button></div>` : ''}
     <div class="opts">${sw}</div>
-    <div class="opts">${extra}</div></div>`;
+    <div class="opts">${extra}</div>
+    ${multiPeople() && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered) ? `<div class="opts">${i.calendar && !i.forName ? '<span class="tag">📅 In wessen Kalender?</span>' : `<span style="color:var(--muted)">${i.calendar ? '📅 für' : 'für'}</span>`}${people().map(p => `<button class="chip" data-id="${i.id}" data-for="${esc(p.name)}" aria-pressed="${i.forName === p.name}">${esc(p.name)}</button>`).join('')}${i.calendar ? '' : `<button class="chip" data-id="${i.id}" data-for="" aria-pressed="${!i.forName}">alle</button>`}</div>` : ''}
+    ${multiHH() ? `<div class="opts">${hhList().map(h => `<button class="chip" data-id="${i.id}" data-hh="${h.id}" aria-pressed="${i.hh === h.id}">🏠 ${esc(h.name)}</button>`).join('')}</div>` : ''}</div>`;
 }
 $('#discardBtn').onclick = () => { preview = null; renderPreview(); };
 $('#applyBtn').onclick = () => {
-  const items = preview.items.filter(i => !i.dupe);
+  const all = preview.items.filter(i => !i.dupe);
+  const ask = all.filter(i => multiPeople() && i.calendar && !i.forName && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered));
+  if (ask.length) { showMsg(`Bitte noch wählen, in wessen Kalender: ${ask.map(i => '„' + i.title + '“').join(', ')}.`, 'warn', 6000); $('#cards .tag')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  const forOf = i => { const p = people().find(x => x.name === i.forName); return p ? { for: p.uid, forName: p.name } : {}; };
+  let nShop = 0, nW = 0; const now = Date.now();
+  const groups = new Map(); all.forEach(i => { const k = i.hh || activeHH(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
+  for (const [hhId, items] of groups) withHousehold(hhId, () => {
   const shop = items.filter(i => i.list === 'einkauf').map(i => ({ text: i.quantity ? `${i.title} (${i.quantity})` : i.title, group: i.aisle, source: '' }));
-  const nShop = addToShoppingList(shop, '');
+  nShop += addToShoppingList(shop, '');
   const todos = load(TODO_KEY, []), clean = load(CLEAN_KEY, []);
-  const now = Date.now();
-  items.filter(i => i.list === 'todo').forEach(i => todos.push({ id: i.id, title: i.title, due: i.due, time: i.time, priority: i.priority, done: false, updatedAt: now }));
+  items.filter(i => i.list === 'todo').forEach(i => todos.push({ id: i.id, title: i.title, due: i.due, time: i.time, priority: i.priority, done: false, updatedAt: now, ...forOf(i) }));
   // Pflanzen: "schon gegossen" setzt den Gießplan zurück, alles andere wird eine Pflanzen-Aufgabe in den To-dos
-  const plants = load('hh-pflanzen', []); let nW = 0;
+  const plants = load('hh-pflanzen', []);
   items.filter(i => i.list === 'pflanzen').forEach(i => {
     const pl = plants.find(p => p.name === i.plant);
     if (i.watered && pl) { pl.last = isoDay(); pl.updatedAt = now; nW++; }
-    else todos.push({ id: i.id, title: i.title, due: i.due, time: i.time, priority: i.priority, done: false, kind: 'pflanzen', plant: i.plant, updatedAt: now });
+    else todos.push({ id: i.id, title: i.title, due: i.due, time: i.time, priority: i.priority, done: false, kind: 'pflanzen', plant: i.plant, updatedAt: now, ...forOf(i) });
   });
   save('hh-pflanzen', plants);
-  items.filter(i => i.list === 'putzen').forEach(i => clean.push({ id: i.id, title: i.title, room: i.room, due: i.due, done: false, updatedAt: now }));
+  items.filter(i => i.list === 'putzen').forEach(i => clean.push({ id: i.id, title: i.title, room: i.room, due: i.due, done: false, updatedAt: now, ...forOf(i) }));
   save(TODO_KEY, todos); save(CLEAN_KEY, clean);
+  });
+  const items = all;
+  const other = all.filter(i => i.hh && i.hh !== activeHH()).length;
   const nT = items.filter(i => i.list === 'todo' || (i.list === 'pflanzen' && !(i.watered && i.plant))).length, nC = items.filter(i => i.list === 'putzen').length;
   preview = null; renderPreview();
-  showMsg(`Übernommen: ${nShop} Einkauf, ${nC} Putzen, ${nT} To-do${nW ? `, ${nW} Pflanze${nW > 1 ? 'n' : ''} als gegossen markiert` : ''}.`, 'ok', 5000);
+  showMsg(`Übernommen: ${nShop} Einkauf, ${nC} Putzen, ${nT} To-do${nW ? `, ${nW} Pflanze${nW > 1 ? 'n' : ''} als gegossen markiert` : ''}.${other ? ` ${other} davon im anderen Haushalt (${[...new Set(all.filter(i => i.hh !== activeHH()).map(i => (hhList().find(h => h.id === i.hh) || {}).name))].join(', ')}).` : ''}`, 'ok', 6000);
   window.onVoiceApplied?.({ nShop, nC, nT });
 };
 

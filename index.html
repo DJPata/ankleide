@@ -95,7 +95,7 @@
 
     <section class="card" id="joinCard" data-nofold hidden>
       <h2>👫 Einladung zum gemeinsamen Haushalt</h2>
-      <p class="hint">Dann seht ihr beide dieselbe Einkaufsliste, dieselben Pflanzen, Putz-Aufgaben, To-dos und gemerkten Rezepte. Dein Ankleidezimmer bleibt privat. Was du schon eingetragen hast, wird zusammengeführt.</p>
+      <p class="hint">Dann seht ihr beide dieselbe Einkaufsliste, dieselben Pflanzen, Putz-Aufgaben, To-dos und gemerkten Rezepte. Dein Ankleidezimmer bleibt privat. Bist du schon in einem anderen Haushalt, kommt dieser als zweiter dazu und du kannst oben umschalten.</p>
       <div class="row"><button class="btn" id="joinBtn">Beitreten</button><button class="btn secondary" id="joinNo">Nein danke</button></div>
     </section>
 
@@ -144,47 +144,69 @@
   // ---------- Gemeinsamer Haushalt ----------
   const join = new URLSearchParams(location.search).get('join');
   function renderHousehold(st = hhSync.status()) {
-    const h = hhSync.household(), body = $('#hhBody');
-    $('#hhBadge').textContent = h ? (st.state === 'on' ? `· verbunden${st.members > 1 ? `, ${st.members} Geräte` : ''}` : st.state === 'error' ? '· Problem' : '· verbinde …') : '';
+    const h = hhSync.household(), body = $('#hhBody'), all = hhSync.households(), act = hhSync.active();
+    if (body.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return; // nicht beim Tippen neu zeichnen
+    $('#hhBadge').textContent = h ? (st.state === 'on' ? `· ${all.length > 1 ? esc(hhSync.nameOf(act)) + ', ' : ''}verbunden${st.members > 1 ? `, ${st.members} Geräte` : ''}` : st.state === 'error' ? '· Problem' : '· verbinde …') : '';
     if (!hhSync.configured()) { body.innerHTML = '<p class="hint">Wird gerade eingerichtet. Sobald Firebase verbunden ist, kannst du hier deine Partnerin einladen.</p>'; return; }
-    if (!h) {
-      body.innerHTML = `<p class="hint">Teile Einkaufsliste, Pflanzen, Putzplan, To-dos und gemerkte Rezepte mit deiner Partnerin. Dein Ankleidezimmer bleibt privat. Ein Konto braucht ihr nicht, nur einen Einladungslink.</p>
-        <div class="row"><button class="btn" id="hhCreate">Haushalt erstellen</button></div>
+    const addHtml = `<div class="row"><input id="hhName" type="text" placeholder="${h ? 'z. B. Haushalt Lisa' : 'Name, z. B. Haushalt Patrick'}" style="flex:1 1 180px"><button class="btn${h ? ' secondary' : ''}" id="hhCreate">${h ? '＋ Weiteren Haushalt erstellen' : 'Haushalt erstellen'}</button></div>
         <p class="hint" style="margin-top:14px">Du hast eine Einladung bekommen? Link hier einfügen:</p>
         <div class="row"><input id="hhCode" type="text" placeholder="https://djpata.github.io/ankleide/?join=…" style="flex:1 1 200px" autocapitalize="off" spellcheck="false"><button class="btn secondary" id="hhJoin">Beitreten</button></div>`;
-      $('#hhCreate').onclick = async () => { const b = $('#hhCreate'); busy(b, true, 'Erstelle …'); try { await hhSync.create(); showMsg('Haushalt erstellt. Jetzt den Link an deine Partnerin schicken.', 'ok', 5000); } catch (e) { showMsg(e.message || String(e)); } busy(b, false); renderHousehold(); };
-      $('#hhJoin').onclick = () => doJoin($('#hhCode').value, $('#hhJoin'));
-      return;
-    }
-    const link = hhSync.inviteLink();
-    body.innerHTML = `${st.state === 'error' ? `<p class="banner warn">${esc(st.error)}</p>` : ''}
-      <p class="hint">${st.members > 1 ? `Ihr seid verbunden (${st.members} Geräte). Änderungen erscheinen beim anderen nach ein paar Sekunden.` : 'Noch allein. Schick deiner Partnerin diesen Link:'}</p>
+    if (!h) {
+      body.innerHTML = `<p class="hint">Teile Einkaufsliste, Pflanzen, Putzplan, To-dos und gemerkte Rezepte mit deiner Partnerin. Dein Ankleidezimmer bleibt privat. Ein Konto braucht ihr nicht, nur einen Einladungslink. Wohnt ihr getrennt, kann jeder einen eigenen Haushalt anlegen und ihr seid in beiden.</p>${addHtml}`;
+    } else {
+      const link = hhSync.inviteLink();
+      body.innerHTML = `${st.state === 'error' ? `<p class="banner warn">${esc(st.error)}</p>` : ''}
+      ${all.length > 1 ? `<p class="hint" style="margin-bottom:6px">Deine Haushalte (oben auf jeder Seite umschaltbar):</p><div class="chips" id="hhList">${all.map(x => `<button type="button" class="chip" aria-pressed="${x.id === h.id}" data-hh="${x.id}">🏠 ${esc(hhSync.nameOf(x))}</button>`).join('')}</div>` : ''}
+      <label>Dein Name (für „Patricks Kalender“ und wer was gesehen hat)<div class="row" style="margin:4px 0 0"><input id="hhMe" type="text" value="${esc(localStorage.getItem('hh-me-name') || '')}" placeholder="z. B. Patrick" style="flex:1 1 180px"><button class="btn secondary" id="hhMeBtn">Speichern</button></div></label>
+      <label>Name dieses Haushalts<div class="row" style="margin:4px 0 0"><input id="hhRename" type="text" value="${esc(act?.name || '')}" placeholder="z. B. Haushalt Patrick" style="flex:1 1 180px"><button class="btn secondary" id="hhRenameBtn">Speichern</button></div></label>
+      <p class="hint" style="margin-top:12px">${st.members > 1 ? `Verbunden mit ${st.members} Geräten. Änderungen erscheinen beim anderen nach ein paar Sekunden.` : 'Noch allein in diesem Haushalt. Schick deiner Partnerin den Link:'}</p>
       <div class="row"><input type="text" readonly value="${esc(link)}" id="hhLink" style="flex:1 1 200px"></div>
-      <div class="row"><button class="btn" id="hhShare">📤 Einladung senden</button><button class="btn secondary" id="hhLeave">Haushalt verlassen</button></div>
-      <p class="hint" style="font-size:12px">Wer den Link hat, kann beitreten. Dein Gemini-Schlüssel wird im Haushalt mitgenutzt. Hat sie die App auf dem Home-Bildschirm, den Link dort unter „Gemeinsamer Haushalt“ einfügen.</p>`;
-    $('#hhShare').onclick = async () => {
-      const text = 'Lass uns die Haushaltshilfe zusammen nutzen: Einkaufsliste, Pflanzen, Putzplan und To-dos. Einfach öffnen und „Beitreten“ tippen:';
-      try { if (navigator.share) await navigator.share({ title: 'Haushaltshilfe', text, url: link }); else { await navigator.clipboard.writeText(text + ' ' + link); showMsg('Link kopiert.', 'ok', 3000); } } catch {}
+      <div class="row"><button class="btn" id="hhShare">📤 Einladung senden</button><button class="btn secondary" id="hhLeave">Diesen Haushalt verlassen</button></div>
+      <p class="hint" style="font-size:12px">Wer den Link hat, kann beitreten. Dein Gemini-Schlüssel wird mitgenutzt. Hat sie die App auf dem Home-Bildschirm, den Link dort hier unten einfügen.</p>
+      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+      <p class="hint" style="margin-bottom:6px">Getrennte Wohnungen? Lege für jede einen Haushalt an:</p>${addHtml}`;
+      $('#hhShare').onclick = async () => {
+        const text = `Lass uns die Haushaltshilfe zusammen nutzen („${hhSync.nameOf(act)}“): Einkaufsliste, Pflanzen, Putzplan und To-dos. Einfach öffnen und „Beitreten“ tippen:`;
+        try { if (navigator.share) await navigator.share({ title: 'Haushaltshilfe', text, url: link }); else { await navigator.clipboard.writeText(text + ' ' + link); showMsg('Link kopiert.', 'ok', 3000); } } catch {}
+      };
+      $('#hhLeave').onclick = async e => {
+        const b = e.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Wirklich verlassen?'; return; }
+        const many = all.length > 1;
+        await hhSync.leave();
+        if (many) location.reload(); else { showMsg('Du hast den Haushalt verlassen. Deine Einträge bleiben auf diesem Handy.', 'ok', 5000); renderHousehold(); }
+      };
+      $('#hhMeBtn').onclick = async () => { const v = $('#hhMe').value.trim(); if (!v) return; $('#hhMe').blur(); await hhSync.setMyName(v); showMsg('Danke, ' + v + '!', 'ok', 2500); renderHousehold(); };
+      $('#hhRenameBtn').onclick = async () => { const v = $('#hhRename').value.trim(); if (!v) return; $('#hhRename').blur(); await hhSync.rename(v); showMsg('Name gespeichert.', 'ok', 2500); renderHousehold(); };
+      $('#hhList')?.querySelectorAll('[data-hh]').forEach(b => b.onclick = () => { if (b.dataset.hh !== h.id) hhSync.switchTo(b.dataset.hh); });
+    }
+    $('#hhCreate').onclick = async () => {
+      const b = $('#hhCreate'), name = $('#hhName').value.trim(), had = !!hhSync.household();
+      if (had && !name) { $('#hhName').focus(); return showMsg('Gib dem neuen Haushalt bitte einen Namen, z. B. „Haushalt Lisa“.', 'warn', 4000); }
+      busy(b, true, 'Erstelle …');
+      try { await hhSync.create(name); if (had) return location.reload(); showMsg('Haushalt erstellt. Jetzt den Link an deine Partnerin schicken.', 'ok', 5000); } catch (e) { showMsg(e.message || String(e)); }
+      busy(b, false); $('#hhName').blur?.(); renderHousehold();
     };
-    $('#hhLeave').onclick = async e => {
-      const b = e.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Wirklich verlassen?'; return; }
-      await hhSync.leave(); showMsg('Du hast den Haushalt verlassen. Deine Einträge bleiben auf diesem Handy.', 'ok', 5000); renderHousehold();
-    };
+    $('#hhJoin').onclick = () => doJoin($('#hhCode').value, $('#hhJoin'));
   }
   async function doJoin(code, btn) {
+    const had = !!hhSync.household();
     busy(btn, true, 'Trete bei …');
-    try { await hhSync.join(code); $('#joinCard').hidden = true; history.replaceState(null, '', location.pathname); $('#apiKey').value = getCfg().key || ''; updateCounts(); showMsg('Willkommen im gemeinsamen Haushalt! Eure Listen werden jetzt zusammengeführt.', 'ok', 6000); }
-    catch (e) { showMsg(e.message || String(e)); }
-    busy(btn, false); renderHousehold();
+    try {
+      await hhSync.join(code); history.replaceState(null, '', location.pathname);
+      if (had) return location.reload();
+      $('#joinCard').hidden = true; $('#apiKey').value = getCfg().key || ''; updateCounts(); showMsg('Willkommen im gemeinsamen Haushalt! Eure Listen werden jetzt zusammengeführt.', 'ok', 6000);
+    } catch (e) { showMsg(e.message || String(e)); }
+    busy(btn, false); document.activeElement?.blur?.(); renderHousehold();
   }
   window.addEventListener('hh-sync-status', e => renderHousehold(e.detail));
   renderHousehold();
-  if (join && hhSync.configured() && hhSync.household()?.id !== join) {
+  if (join && hhSync.configured() && !hhSync.households().some(x => x.id === join)) {
     $('#joinCard').hidden = false;
     $('#joinBtn').onclick = () => doJoin(join, $('#joinBtn'));
     $('#joinNo').onclick = () => { $('#joinCard').hidden = true; history.replaceState(null, '', location.pathname); };
   }
-  window.onVoiceApplied = () => location.reload();
+  window.onVoiceApplied = () => { try { sessionStorage.setItem('hh-msg', $('#status').innerText); } catch {} location.reload(); };
+  try { const m = sessionStorage.getItem('hh-msg'); if (m) { sessionStorage.removeItem('hh-msg'); showMsg(m, 'ok', 6000); } } catch {}
   $('#saveKey').onclick = async () => {
     const btn = $('#saveKey'); setCfg({ key: $('#apiKey').value.trim() });
     if (!getCfg().key) { $('#keyResult').textContent = 'Bitte einen Schlüssel eintragen.'; return; }

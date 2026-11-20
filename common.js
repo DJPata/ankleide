@@ -14,16 +14,25 @@ const NO_THINK_KEY = 'hh-nothink';
 function getCfg() { try { return { textModel: DEFAULT_TEXT, ...JSON.parse(localStorage.getItem('ankleide-cfg') || '{}') }; } catch { return { textModel: DEFAULT_TEXT }; } }
 function setCfg(patch) { const c = { ...getCfg(), ...patch }; try { localStorage.setItem('ankleide-cfg', JSON.stringify(c)); } catch {} return c; }
 
-function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
+// Mehrere Haushalte: die Listen des gerade gewählten Haushalts liegen unter den normalen Schlüsseln,
+// die der anderen unter „hh-store:<id>:<schlüssel>“. Mit withHousehold(id, fn) schreibt man gezielt in einen anderen.
+let HH_TARGET = null;
+const storeKey = k => HH_TARGET && (SYNC_KEYS.includes(k) || k === DIRTY_KEY) ? `hh-store:${HH_TARGET}:${k}` : k;
+function withHousehold(id, fn) {
+  const active = (load('hh-household', null) || {}).id;
+  if (!id || id === active) return fn();
+  HH_TARGET = id; try { return fn(); } finally { HH_TARGET = null; window.hhSync?.flush(id); }
+}
+function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(storeKey(key))); return v ?? fallback; } catch { return fallback; } }
 // Gemeinsamer Haushalt: diese Listen werden mit der Partnerin geteilt (siehe sync.js)
 const SYNC_KEYS = ['hh-einkauf', 'hh-pflanzen', 'hh-todo', 'hh-putzplan', 'hh-rezepte'];
 const DIRTY_KEY = 'hh-sync-dirty';
 function save(key, val) {
   try {
     if (SYNC_KEYS.includes(key) && Array.isArray(val) && localStorage.getItem('hh-household')) markDirty(key, load(key, []), val);
-    localStorage.setItem(key, JSON.stringify(val));
+    localStorage.setItem(storeKey(key), JSON.stringify(val));
   } catch {}
-  if (SYNC_KEYS.includes(key)) window.hhSync?.flush();
+  if (SYNC_KEYS.includes(key) && !HH_TARGET) window.hhSync?.flush();
 }
 // Merkt sich geänderte und gelöschte Einträge, bis sie hochgeladen sind (klappt auch offline)
 function markDirty(key, prev, next) {
@@ -32,11 +41,15 @@ function markDirty(key, prev, next) {
   for (const it of next) {
     if (!it || !it.id) continue;
     const old = before.get(it.id);
-    if (old !== JSON.stringify(it)) { if (!old || JSON.parse(old).updatedAt === it.updatedAt) it.updatedAt = Date.now(); d[it.id] = 1; }
+    if (old !== JSON.stringify(it)) {
+      if (!old || JSON.parse(old).updatedAt === it.updatedAt) it.updatedAt = Date.now();
+      if (!old) { it.createdAt ||= it.updatedAt; it.by ||= localStorage.getItem('hh-uid') || undefined; }
+      d[it.id] = 1;
+    }
     before.delete(it.id);
   }
   for (const id of before.keys()) d[id] = 'del';
-  localStorage.setItem(DIRTY_KEY, JSON.stringify(dirty));
+  localStorage.setItem(storeKey(DIRTY_KEY), JSON.stringify(dirty));
 }
 // Seiten können neu zeichnen, wenn die Partnerin etwas ändert
 function onSync(fn) { window.addEventListener('hh-sync', e => fn(e.detail?.key)); }
