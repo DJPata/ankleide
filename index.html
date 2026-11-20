@@ -39,6 +39,8 @@
   .t-todo { --icbg: #2a2614; --glow: rgba(240,210,120,.14); }
   .voice-hero { background: linear-gradient(160deg, #1d1a15 0%, #151517 55%); border-color: #3a3328; }
   .voice-hero .hint { text-align: center; }
+  #calSum { display: block; }
+  #calSum i { font-style: normal; color: var(--ink); }
   .t-settings { --icbg: #232327; --glow: rgba(255,255,255,.06); }
   details.card summary { cursor: pointer; font: 600 17px var(--display); display: flex; justify-content: space-between; align-items: center; }
   details.card summary::after { content: "＋"; color: var(--muted); }
@@ -85,6 +87,7 @@
     </section>
 
     <div class="tiles">
+      <a class="tile wide t-cal" href="kalender.html"><div class="ic">📅</div><div><b>Kalender</b><span id="calSum">Eure Termine, Gießen, Putzen und To-dos</span></div></a>
       <a class="tile t-wardrobe" href="ankleidezimmer.html"><div class="ic">👔</div><b>Ankleidezimmer</b><span>Outfit für jeden Anlass</span></a>
       <a class="tile t-kitchen" href="kueche.html"><div class="ic">🍳</div><b>Küchenhilfe</b><span>Kühlschrank-Foto wird zum Rezept</span></a>
       <a class="tile t-list" href="einkauf.html"><div class="ic">🛒</div><b>Einkaufsliste</b><span id="listCount">Alles, was noch fehlt</span></a>
@@ -129,6 +132,10 @@
   $('#apiKey').value = cfg.key || '';
   if (!cfg.key && !new URLSearchParams(location.search).get('join')) { $('#settings').open = true; }
   function updateCounts() {
+  // Kalender-Kachel: was heute und morgen ansteht
+  { const t = isoDay(), ents = calendarEntries(t, addDays(t, 1)).filter(e => e.type !== 'giessen');
+    const fmt = e => `${e.date === t ? '' : 'morgen '}${e.time ? e.time + ' ' : ''}${esc(e.title)}`;
+    $('#calSum').innerHTML = ents.length ? ents.slice(0, 3).map(e => `<i>${CAL_ICON[e.type]} ${fmt(e)}</i>`).join('<br>') + (ents.length > 3 ? `<br>… und ${ents.length - 3} mehr` : '') : 'Heute und morgen steht nichts an.'; }
   const open = load('hh-einkauf', []).filter(i => !i.done).length;
   if (open) $('#listCount').innerHTML = `<br><span class="count">${open} ${open === 1 ? 'Eintrag' : 'Einträge'} offen</span>`;
   const DAY = 864e5, today0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;

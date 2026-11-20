@@ -7,6 +7,7 @@ Vier Helfer in einer Handy-Web-App (Google Gemini):
 - **Einkaufsliste** (`einkauf.html`): abhaken, mit KI zusammenfassen und nach Abteilung sortieren
 - **Flora-Park** (`pflanzen.html`): Pflanzen fotografieren → Gießrhythmus, Heute-gießen-Liste, Erinnerungen über den iPhone-Kalender
 - **Mikrofon auf der Startseite** (`voice.js`): frei sprechen → Gemini verteilt auf Einkauf, Putzen, Pflanzen, To-do; Vorschau-Karten
+- **Kalender** (kalender.html): gemeinsamer Kalender pro Haushalt, Termine gemeinsam oder pro Person, dazu Gießen, Putzplan und To-dos mit Datum.
 - **To-dos** (`sprache.html`): To-do- und Putz-Liste, Kalender-Export
 - **Home Cleaner** (`putzen.html`): Stelle fotografieren → Putz-Anleitung, Mittel, Sicherheitshinweise
 

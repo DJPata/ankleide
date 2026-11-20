@@ -25,7 +25,7 @@ function withHousehold(id, fn) {
 }
 function load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(storeKey(key))); return v ?? fallback; } catch { return fallback; } }
 // Gemeinsamer Haushalt: diese Listen werden mit der Partnerin geteilt (siehe sync.js)
-const SYNC_KEYS = ['hh-einkauf', 'hh-pflanzen', 'hh-todo', 'hh-putzplan', 'hh-rezepte'];
+const SYNC_KEYS = ['hh-einkauf', 'hh-pflanzen', 'hh-todo', 'hh-putzplan', 'hh-rezepte', 'hh-termine'];
 const DIRTY_KEY = 'hh-sync-dirty';
 function save(key, val) {
   try {
@@ -219,3 +219,32 @@ function tasksIcsUrl(ts) {
   L.push('END:VCALENDAR');
   return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(L.join('\r\n'));
 }
+
+// ---------- Kalender: Termine + alles mit Datum aus den anderen Bereichen ----------
+const TERM_KEY = 'hh-termine';
+const GEM = 'Gemeinsam';
+const myUid = () => (window.hhSync?.household() ? hhSync.myId() : 'me');
+const myName = () => localStorage.getItem('hh-me-name') || '';
+// Ist dieser Eintrag (Termin/Aufgabe) für mich bzw. für alle?
+const isForMe = t => !t.for || t.for === myUid() || (String(t.for).startsWith('name:') && !!myName() && (t.forName || '').toLowerCase() === myName().toLowerCase());
+const whoLabel = t => !t.for ? '' : isForMe(t) ? 'du' : (t.forName || '');
+const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); return isoDay(new Date(y, m - 1, d + n)); };
+// Alle Einträge zwischen from und to (jeweils YYYY-MM-DD, inklusive), sortiert nach Tag und Uhrzeit
+function calendarEntries(from, to) {
+  const out = [];
+  for (const t of load(TERM_KEY, [])) if (t.date >= from && t.date <= to) out.push({ type: 'termin', date: t.date, time: t.time || '', title: t.title, ref: t });
+  for (const t of load(TODO_KEY, [])) if (t.due && !t.done && t.due >= from && t.due <= to) out.push({ type: t.kind === 'pflanzen' ? 'pflanze' : 'todo', date: t.due, time: t.time || '', title: t.title, ref: t });
+  for (const t of load(CLEAN_KEY, [])) if (t.due && !t.done && t.due >= from && t.due <= to) out.push({ type: 'putzen', date: t.due, time: '', title: t.title + (t.room ? ' · ' + t.room : ''), ref: t });
+  // Gießen: nächster Termin (überfällige zählen heute) und die folgenden im gleichen Rhythmus
+  const today = isoDay();
+  for (const p of load('hh-pflanzen', [])) {
+    if (!p.last) continue;
+    let d = p.last, guard = 0;
+    const step = () => { const [y, m] = d.split('-').map(Number); const summer = m >= 4 && m <= 9; return Math.max(1, Math.round(summer ? p.summer : p.winter) || 7); };
+    d = addDays(d, step());
+    if (d < today) d = today;
+    while (d <= to && guard++ < 400) { if (d >= from) out.push({ type: 'giessen', date: d, time: '', title: `${p.name} gießen`, ref: p }); d = addDays(d, step()); }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date) || (a.time || '99').localeCompare(b.time || '99') || (a.type === 'termin' ? -1 : 1));
+}
+const CAL_ICON = { termin: '📅', todo: '✅', putzen: '🧽', giessen: '💧', pflanze: '🪴' };

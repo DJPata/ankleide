@@ -1,7 +1,7 @@
 // Sprach-Eingabe: aufnehmen, an Gemini schicken, Vorschau zeigen, auf die Listen verteilen.
 // Wird auf der Startseite und auf der To-do-Seite benutzt.
-const LISTS = { einkauf: '🛒 Einkauf', putzen: '🧽 Putzen', pflanzen: '🪴 Pflanzen', todo: '✅ To-do' };
-const ORDER = ['einkauf', 'putzen', 'pflanzen', 'todo'];
+const LISTS = { einkauf: '🛒 Einkauf', putzen: '🧽 Putzen', pflanzen: '🪴 Pflanzen', todo: '✅ To-do', termin: '📅 Termin' };
+const ORDER = ['einkauf', 'putzen', 'pflanzen', 'todo', 'termin'];
 const plantNames = () => load('hh-pflanzen', []).map(p => p.name);
 const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 let preview = null; // {transcript, items: [...]}
@@ -79,15 +79,16 @@ const ME = 'Ich';
 function forChoices(i) {
   const names = people().map(p => p.me ? ME : p.name);
   if (!names.includes(ME)) names.unshift(ME);
+  if (i.list === 'termin') names.unshift(GEM);
   if (i.forRaw && i.forRaw !== ME && !names.some(n => n.toLowerCase() === i.forRaw.toLowerCase())) names.push(i.forRaw);
   return names;
 }
-const DATED = ['todo', 'putzen', 'pflanzen'];
+const DATED = ['todo', 'putzen', 'pflanzen', 'termin'];
 function contextText() {
   const d = new Date();
   const shop = load(LIST_KEY, []).filter(i => !i.done).map(i => i.text);
   return `Heute ist ${WD[d.getDay()]}, der ${isoDay(d)} (Zeitzone Europe/Berlin).
-Ziele: "einkauf" (etwas kaufen/besorgen), "putzen" (Reinigen, Aufräumen, Wäsche, Haushaltspflege), "pflanzen" (gießen, düngen, umtopfen, schneiden, Pflanzen kaufen ausgenommen – das ist Einkauf), "todo" (alles andere: anrufen, Termine, Erledigungen, Reparaturen).
+Ziele: "einkauf" (etwas kaufen/besorgen), "putzen" (Reinigen, Aufräumen, Wäsche, Haushaltspflege), "pflanzen" (gießen, düngen, umtopfen, schneiden, Pflanzen kaufen ausgenommen – das ist Einkauf), "termin" (Termine und Verabredungen mit festem Tag: Arzt, Friseur, Essen, Geburtstag, Besuch – und alles, was "in den Kalender" soll), "todo" (alles andere: anrufen, Erledigungen, Reparaturen).
 Pflanzen im Flora-Park: ${plantNames().join(', ') || '(keine)'}.
 ${people().length ? `Personen im Haushalt: ${people().map(p => `"${p.name}"${p.me ? ' (spricht gerade)' : ''}`).join(', ')}.
 ` : ''}"for": wenn gesagt wird, für wen etwas ist bzw. in wessen Kalender ("in Patricks Kalender", "Lisa soll …", "für mich" = "ich"), den Namen der Person${people().length ? ' (möglichst einer der Namen oben)' : ''}, sonst null. "forUnsure": true, wenn ein Name auch zum Termin selbst gehören könnte (z. B. "Lisa Massage morgen in den Kalender": Massage FÜR Lisa oder Massage BEI Lisa?), sonst false.
@@ -98,7 +99,7 @@ Haushalte (getrennte Wohnungen): ${hhList().map(h => `"${h.name}"${h.id === acti
 }
 const FORMAT = `Antworte NUR mit JSON:
 {"transcript": "wörtliche Mitschrift (bei Text-Eingabe den Text)",
- "items": [{"title": "kurz und klar, deutsch, ohne Datum im Titel", "list": "einkauf|putzen|pflanzen|todo", "plant": "Name aus dem Flora-Park oder null", "watered": true wenn gesagt wird, dass eine Pflanze SCHON gegossen wurde, sonst false,
+ "items": [{"title": "kurz und klar, deutsch, ohne Datum im Titel", "list": "einkauf|putzen|pflanzen|todo|termin", "plant": "Name aus dem Flora-Park oder null", "watered": true wenn gesagt wird, dass eine Pflanze SCHON gegossen wurde, sonst false,
    "quantity": "Menge oder null", "aisle": "Gang oder null", "room": "Raum oder null",
    "due": "YYYY-MM-DD oder null", "time": "HH:MM oder null", "priority": "hoch|mittel|niedrig",
    "dupe": true wenn es schon auf der Einkaufsliste steht, sonst false, "household": "Name des Haushalts oder null", "for": "Name der Person, \"ich\" oder null", "forUnsure": true|false, "calendar": true wenn ausdrücklich in den Kalender eingetragen werden soll, sonst false}]}
@@ -145,7 +146,8 @@ ${input.text ? 'Text: ' + input.text + '\n' : ''}${FORMAT}`;
       const p = i.forRaw === ME ? people().find(x => x.me) : people().find(x => x.name.toLowerCase() === i.forRaw.toLowerCase());
       i.forName = i.forRaw === ME ? ME : p ? p.name : '';
       if (i.forUnsure) i.forName = '';
-      i.askFor = i.calendar && !i.forName && DATED.includes(i.list) && (multiPeople() || !!i.forRaw);
+      if (i.calendar && i.list === 'todo') i.list = 'termin';
+      i.askFor = i.list === 'termin' && !i.forName && (multiPeople() || !!i.forRaw);
     });
     // Duplikate auf der Einkaufsliste selbst nochmal prüfen
     const shop = new Set(load(LIST_KEY, []).filter(i => !i.done).map(i => i.text.toLowerCase().replace(/\s*\(.*\)$/, '')));
@@ -195,30 +197,30 @@ function cardHtml(i) {
        ${i.watered ? '' : `<input type="date" data-id="${i.id}" data-k="due" value="${esc(i.due)}" aria-label="Datum">`}`
     : `${i.list === 'putzen' ? `<select data-id="${i.id}" data-k="room"><option value="">Raum …</option>${ROOMS.map(r => `<option ${r === i.room ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>` : ''}
        <input type="date" data-id="${i.id}" data-k="due" value="${esc(i.due)}" aria-label="Datum">
-       ${i.list === 'todo' ? `<input type="time" data-id="${i.id}" data-k="time" value="${esc(i.time)}" aria-label="Uhrzeit" style="width:auto;padding:5px 8px;font-size:13px">` : ''}`;
+       ${i.list === 'todo' || i.list === 'termin' ? `<input type="time" data-id="${i.id}" data-k="time" value="${esc(i.time)}" aria-label="Uhrzeit" style="width:auto;padding:5px 8px;font-size:13px">` : ''}`;
   return `<div class="pcard ${i.dupe ? 'dupe' : ''}">
     <div class="top"><input class="title" type="text" data-id="${i.id}" data-k="title" value="${esc(i.title)}" aria-label="Titel">
       <button class="x" data-rm="${i.id}" aria-label="Verwerfen">×</button></div>
     ${i.dupe ? `<div class="opts"><span class="tag">steht schon auf der Einkaufsliste</span><button class="chip" data-keep="${i.id}">trotzdem hinzufügen</button></div>` : ''}
     <div class="opts">${sw}</div>
     <div class="opts">${extra}</div>
-    ${(multiPeople() || i.askFor || i.calendar) && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered) ? `<div class="opts">${i.askFor && !i.forName ? `<span class="tag">📅 In wessen Kalender?${i.forUnsure && i.forRaw ? ` Ist „${esc(i.forRaw)}“ gemeint oder gehört der Name zum Termin?` : ''}</span>` : `<span style="color:var(--muted)">${i.calendar ? '📅 für' : 'für'}</span>`}${forChoices(i).map(n => `<button class="chip" data-id="${i.id}" data-for="${esc(n)}" aria-pressed="${i.forName === n}">${esc(n === ME ? 'mich' : n)}</button>`).join('')}${i.calendar ? '' : `<button class="chip" data-id="${i.id}" data-for="" aria-pressed="${!i.forName}">alle</button>`}</div>` : ''}
+    ${(multiPeople() || i.askFor || i.list === 'termin') && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered) ? `<div class="opts">${i.askFor && !i.forName ? `<span class="tag">📅 Für wen ist das?${i.forUnsure && i.forRaw ? ` Ist „${esc(i.forRaw)}“ gemeint oder gehört der Name zum Termin?` : ''}</span>` : `<span style="color:var(--muted)">für</span>`}${forChoices(i).map(n => `<button class="chip" data-id="${i.id}" data-for="${esc(n)}" aria-pressed="${i.forName === n}">${esc(n === ME ? 'mich' : n === GEM ? 'gemeinsam' : n)}</button>`).join('')}${i.list === 'termin' ? '' : `<button class="chip" data-id="${i.id}" data-for="" aria-pressed="${!i.forName}">alle</button>`}</div>` : ''}
     ${multiHH() ? `<div class="opts">${hhList().map(h => `<button class="chip" data-id="${i.id}" data-hh="${h.id}" aria-pressed="${i.hh === h.id}">🏠 ${esc(h.name)}</button>`).join('')}</div>` : ''}</div>`;
 }
 $('#discardBtn').onclick = () => { preview = null; renderPreview(); };
 $('#applyBtn').onclick = () => {
   const all = preview.items.filter(i => !i.dupe);
   const ask = all.filter(i => i.askFor && !i.forName && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered));
-  if (ask.length) { showMsg(`Bitte noch wählen, in wessen Kalender: ${ask.map(i => '„' + i.title + '“').join(', ')}.`, 'warn', 6000); $('#cards .tag')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  if (ask.length) { showMsg(`Bitte noch wählen, für wen: ${ask.map(i => '„' + i.title + '“').join(', ')}.`, 'warn', 6000); $('#cards .tag')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
   // Person im Haushalt → ihre Kennung; noch nicht beigetretene Person → „name:Lisa“ (wird später über den Namen zugeordnet)
   const myIdNow = window.hhSync?.household() ? hhSync.myId() : 'me';
   const forOf = i => {
-    if (!i.forName) return {};
+    if (!i.forName || i.forName === GEM) return {};
     if (i.forName === ME) return { for: myIdNow, forName: localStorage.getItem('hh-me-name') || 'mich' };
     const p = people().find(x => x.name === i.forName);
     return p ? { for: p.uid, forName: p.name } : { for: 'name:' + i.forName, forName: i.forName };
   };
-  let nShop = 0, nW = 0; const now = Date.now();
+  let nShop = 0, nW = 0, nTerm = 0; const now = Date.now();
   const groups = new Map(); all.forEach(i => { const k = i.hh || activeHH(); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(i); });
   for (const [hhId, items] of groups) withHousehold(hhId, () => {
   const shop = items.filter(i => i.list === 'einkauf').map(i => ({ text: i.quantity ? `${i.title} (${i.quantity})` : i.title, group: i.aisle, source: '' }));
@@ -234,20 +236,27 @@ $('#applyBtn').onclick = () => {
   });
   save('hh-pflanzen', plants);
   items.filter(i => i.list === 'putzen').forEach(i => clean.push({ id: i.id, title: i.title, room: i.room, due: i.due, done: false, updatedAt: now, ...forOf(i) }));
+  // Termine kommen in den gemeinsamen App-Kalender (ohne Datum bleibt es ein To-do)
+  const terms = load(TERM_KEY, []);
+  items.filter(i => i.list === 'termin').forEach(i => {
+    if (i.due) { terms.push({ id: i.id, title: i.title, date: i.due, time: i.time, note: '', createdAt: now, updatedAt: now, ...forOf(i) }); nTerm++; }
+    else todos.push({ id: i.id, title: i.title, due: '', time: i.time, priority: i.priority, done: false, updatedAt: now, ...forOf(i) });
+  });
+  save(TERM_KEY, terms);
   save(TODO_KEY, todos); save(CLEAN_KEY, clean);
   });
   // „In den Kalender“: Termine für mich (oder für alle) gleich zum Übernehmen anbieten
   const myIdV = window.hhSync?.household() ? hhSync.myId() : 'me';
-  const cal = all.filter(i => i.calendar && i.due && DATED.includes(i.list) && !(i.list === 'pflanzen' && i.watered) && (!forOf(i).for || forOf(i).for === myIdV || isMeName(forOf(i).forName)))
-    .map(i => ({ id: i.id, title: i.title, due: i.due, time: i.time, room: i.room, k: i.list === 'putzen' ? CLEAN_KEY : TODO_KEY, hh: i.hh || activeHH() }));
-  const calNoDate = all.filter(i => i.calendar && !i.due).length;
+  const cal = all.filter(i => i.list === 'termin' && i.due && (!forOf(i).for || forOf(i).for === myIdV || isMeName(forOf(i).forName)))
+    .map(i => ({ id: i.id, title: i.title, due: i.due, time: i.time, room: i.room, k: TERM_KEY, hh: i.hh || activeHH() }));
+  const calNoDate = all.filter(i => i.list === 'termin' && !i.due).length;
   try { if (cal.length) sessionStorage.setItem('hh-cal-offer', JSON.stringify(cal)); } catch {}
   const items = all;
   const other = all.filter(i => i.hh && i.hh !== activeHH()).length;
-  const nT = items.filter(i => i.list === 'todo' || (i.list === 'pflanzen' && !(i.watered && i.plant))).length, nC = items.filter(i => i.list === 'putzen').length;
+  const nT = items.filter(i => i.list === 'todo' || (i.list === 'termin' && !i.due) || (i.list === 'pflanzen' && !(i.watered && i.plant))).length, nC = items.filter(i => i.list === 'putzen').length;
   preview = null; renderPreview();
-  showMsg(`Übernommen: ${nShop} Einkauf, ${nC} Putzen, ${nT} To-do${nW ? `, ${nW} Pflanze${nW > 1 ? 'n' : ''} als gegossen markiert` : ''}.${other ? ` ${other} davon im anderen Haushalt (${[...new Set(all.filter(i => i.hh !== activeHH()).map(i => (hhList().find(h => h.id === i.hh) || {}).name))].join(', ')}).` : ''}`, 'ok', 6000);
-  if (calNoDate) setTimeout(() => showMsg('Für einen Kalender-Termin fehlte das Datum. Sag es nochmal mit Tag, z. B. „am Freitag um 10“.', 'warn', 7000), 50);
+  showMsg(`Übernommen: ${nTerm ? `${nTerm} Termin${nTerm > 1 ? 'e' : ''} im Kalender, ` : ''}${nShop} Einkauf, ${nC} Putzen, ${nT} To-do${nW ? `, ${nW} Pflanze${nW > 1 ? 'n' : ''} als gegossen markiert` : ''}.${other ? ` ${other} davon im anderen Haushalt (${[...new Set(all.filter(i => i.hh !== activeHH()).map(i => (hhList().find(h => h.id === i.hh) || {}).name))].join(', ')}).` : ''}`, 'ok', 6000);
+  if (calNoDate) setTimeout(() => showMsg('Für einen Termin fehlte das Datum, er steht jetzt bei den To-dos. Sag ihn nochmal mit Tag, z. B. „am Freitag um 10“.', 'warn', 7000), 50);
   showCalOffer();
   window.onVoiceApplied?.({ nShop, nC, nT });
 };
@@ -260,10 +269,10 @@ function showCalOffer() {
   if (!cal || !cal.length) return;
   const box = document.createElement('section'); box.id = 'calOffer'; box.className = 'card'; box.dataset.nofold = '';
   box.style.cssText = 'border-color:var(--accent);';
-  box.innerHTML = `<h2 style="margin:0">📅 In deinen Kalender?</h2>
+  box.innerHTML = `<h2 style="margin:0">📲 Auch in deinen iPhone-Kalender?</h2>
     <p class="hint" style="margin:6px 0 10px">${cal.map(t => `<b style="color:var(--ink)">${esc(t.title)}</b> · ${new Date(t.due + 'T00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' })}${t.time ? ' ' + esc(t.time) : ''}`).join('<br>')}</p>
     <div class="row"><a class="btn" id="calOfferBtn" download="termin.ics" href="${tasksIcsUrl(cal)}">📅 ${cal.length === 1 ? 'Termin' : cal.length + ' Termine'} übernehmen</a><button class="btn secondary" id="calOfferNo">Nicht jetzt</button></div>
-    <p class="hint" style="font-size:12px;margin-top:8px">Danach öffnet sich der iPhone-Kalender, dort auf „Hinzufügen“ tippen.</p>`;
+    <p class="hint" style="font-size:12px;margin-top:8px">Im <a href="kalender.html">App-Kalender</a> steht der Termin schon. Für eine Erinnerung vom iPhone hier tippen, dann im Kalender auf „Hinzufügen“.</p>`;
   const st = document.getElementById('status'); st.parentNode.insertBefore(box, st.nextSibling);
   const done = () => { try { sessionStorage.removeItem('hh-cal-offer'); } catch {} box.remove(); };
   box.querySelector('#calOfferNo').onclick = done;

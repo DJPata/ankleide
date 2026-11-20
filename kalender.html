@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kalender · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .calhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .calhead b { font: 600 18px var(--display); text-transform: capitalize; }
+  .nav { background: var(--card-2); border: 1px solid var(--line); color: var(--ink); width: 40px; height: 40px; border-radius: 50%; font-size: 18px; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .wd { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0; }
+  .day { aspect-ratio: 1 / 1.05; border-radius: 12px; border: 1px solid transparent; background: none; color: var(--ink); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 6px 0 0; gap: 3px; font: 500 15px var(--body); min-width: 0; }
+  .day.out { color: #55555c; }
+  .day.today { border-color: var(--accent); }
+  .day.sel { background: var(--accent); color: var(--accent-ink); }
+  .dots { display: flex; gap: 2px; height: 6px; flex-wrap: wrap; justify-content: center; max-width: 34px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .day.sel .dot { background: var(--accent-ink); }
+  .dot.todo { background: #e9d27a; } .dot.putzen { background: #6eb4ff; } .dot.giessen { background: #7fdc9a; } .dot.pflanze { background: #a6e07a; }
+  .ev { display: grid; grid-template-columns: 54px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .ev:last-child { border-bottom: 0; }
+  .ev .tm { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .ev .ti { min-width: 0; overflow-wrap: anywhere; }
+  .ev .ti small { display: block; color: var(--muted); font-size: 12px; }
+  .ev.termin .ti b { font-weight: 600; }
+  .ev .acts { display: flex; gap: 2px; }
+  .ev .acts a, .ev .acts button { background: none; border: 0; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 6px; text-decoration: none; }
+  .who { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--soft); color: var(--ink); margin-left: 4px; vertical-align: 1px; }
+  .who.gem { background: #26221c; color: var(--accent); }
+  .daylabel { margin: 14px 0 2px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .daylabel:first-child { margin-top: 0; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Kalender</h1>
+    <p>Eure gemeinsamen Termine, dazu Gießen, Putzen und To-dos.</p>
+  </header>
+  <main>
+    <div id="status"></div>
+
+    <section class="card" data-nofold>
+      <div class="row" style="justify-content:space-between">
+        <div class="chips" id="views"></div>
+        <button class="btn small" id="newBtn">＋ Termin</button>
+      </div>
+      <div id="monthView">
+        <div class="calhead"><button class="nav" id="prev" aria-label="Voriger Monat">‹</button><b id="monthLabel"></b><button class="nav" id="next" aria-label="Nächster Monat">›</button></div>
+        <div class="grid" id="grid" style="margin-top:8px"></div>
+        <div class="legend" style="margin-top:10px"><span><i class="dot"></i>Termin</span><span><i class="dot todo"></i>To-do</span><span><i class="dot putzen"></i>Putzen</span><span><i class="dot giessen"></i>Gießen</span></div>
+      </div>
+      <div id="dayList"></div>
+    </section>
+
+    <section class="card" id="form" data-nofold hidden>
+      <h2 id="formTitle">Neuer Termin</h2>
+      <label>Was?<input id="fTitle" type="text" placeholder="z. B. Abendessen bei Oma"></label>
+      <div class="row">
+        <label style="flex:1 1 140px">Tag<input id="fDate" type="date"></label>
+        <label style="flex:1 1 110px">Uhrzeit (optional)<input id="fTime" type="time"></label>
+      </div>
+      <label>Für wen?</label>
+      <div class="chips" id="fWho"></div>
+      <label>Notiz (optional)<input id="fNote" type="text" placeholder="z. B. Geschenk mitbringen"></label>
+      <div class="row">
+        <button class="btn" id="fSave">Speichern</button>
+        <button class="btn secondary" id="fCancel">Abbrechen</button>
+        <button class="btn secondary" id="fDelete" hidden>Löschen</button>
+      </div>
+      <p class="hint" id="fHint">Alle im Haushalt sehen den Termin. Private Termine trägst du lieber direkt im iPhone-Kalender ein.</p>
+    </section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script src="firebase-config.js"></script>
+<script src="sync.js"></script>
+<script>
+const MON = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const WDS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+let view = load('hh-cal-view', 'Monat');
+let sel = isoDay();
+let month = sel.slice(0, 7); // YYYY-MM
+let editing = null, who = GEM;
+
+const people = () => (window.hhSync?.people() || []);
+function whoChoices() {
+  const p = people(); const names = p.map(x => x.me ? 'Ich' : x.name);
+  if (!names.includes('Ich')) names.unshift('Ich');
+  return [GEM, ...names];
+}
+function whoToFields(w) {
+  if (w === GEM) return { for: '', forName: '' };
+  if (w === 'Ich') return { for: myUid(), forName: myName() || 'Ich' };
+  const p = people().find(x => x.name === w);
+  return p ? { for: p.uid, forName: p.name } : { for: 'name:' + w, forName: w };
+}
+const fieldsToWho = t => !t.for ? GEM : isForMe(t) ? 'Ich' : (t.forName || GEM);
+const dayLabel = iso => {
+  const t = isoDay(), d = new Date(iso + 'T00:00');
+  const rel = iso === t ? 'Heute' : iso === addDays(t, 1) ? 'Morgen' : iso === addDays(t, -1) ? 'Gestern' : '';
+  return (rel ? rel + ', ' : '') + d.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+};
+
+function evHtml(e) {
+  const t = e.ref, termin = e.type === 'termin';
+  const w = termin || e.type === 'todo' || e.type === 'pflanze' || e.type === 'putzen' ? whoLabel(t) : '';
+  const whoTag = termin ? (t.for ? `<span class="who">${esc(w === 'du' ? 'du' : w)}</span>` : `<span class="who gem">gemeinsam</span>`) : (w ? `<span class="who">${esc(w)}</span>` : '');
+  const ticks = termin ? (window.hhSync?.ticks(t, TERM_KEY) || '') : '';
+  const ics = termin && isForMe(t) ? `<a href="${tasksIcsUrl([{ id: t.id, title: t.title, due: t.date, time: t.time }])}" download="termin.ics" data-ics="${t.id}" title="In iPhone-Kalender übernehmen" aria-label="In iPhone-Kalender übernehmen">${(t.inCalBy || []).includes(myUid()) ? '✓' : '📲'}</a>` : '';
+  return `<div class="ev ${e.type}"><span class="tm">${e.time || (termin ? 'ganztägig' : '')}</span>
+    <span class="ti">${CAL_ICON[e.type]} ${termin ? `<b>${esc(e.title)}</b>` : esc(e.title)}${whoTag}${ticks}${t.note ? `<small>${esc(t.note)}</small>` : ''}</span>
+    <span class="acts">${ics}${termin ? `<button data-edit="${t.id}" aria-label="Bearbeiten">✎</button>` : ''}</span></div>`;
+}
+
+function render() {
+  chipGroup($('#views'), ['Monat', 'Liste'], view, v => { view = v; save('hh-cal-view', v); render(); });
+  $('#monthView').hidden = view !== 'Monat';
+  if (view === 'Monat') {
+    const [y, m] = month.split('-').map(Number);
+    $('#monthLabel').textContent = `${MON[m - 1]} ${y}`;
+    const first = new Date(y, m - 1, 1), start = new Date(y, m - 1, 1 - ((first.getDay() + 6) % 7));
+    const days = []; for (let i = 0; i < 42; i++) days.push(isoDay(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)));
+    const ents = calendarEntries(days[0], days[41]); const by = {};
+    ents.forEach(e => (by[e.date] ||= []).push(e.type));
+    const today = isoDay();
+    $('#grid').innerHTML = WDS.map(w => `<div class="wd">${w}</div>`).join('') + days.slice(0, days[35].slice(0, 7) === month ? 42 : 35).map(d => {
+      const types = by[d] || [], uniq = [...new Set(types)].slice(0, 4);
+      return `<button class="day ${d.slice(0, 7) !== month ? 'out' : ''} ${d === today ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-d="${d}" aria-label="${dayLabel(d)}${types.length ? ', ' + types.length + ' Einträge' : ''}">
+        ${Number(d.slice(8))}<span class="dots">${uniq.map(t => `<i class="dot ${t === 'termin' ? '' : t}"></i>`).join('')}</span></button>`;
+    }).join('');
+    $('#grid').querySelectorAll('[data-d]').forEach(b => b.onclick = () => { sel = b.dataset.d; if (sel.slice(0, 7) !== month) month = sel.slice(0, 7); render(); });
+    const list = calendarEntries(sel, sel);
+    $('#dayList').innerHTML = `<p class="daylabel">${dayLabel(sel)}</p>` + (list.map(evHtml).join('') || '<p class="hint" style="margin:6px 0 0">Nichts eingetragen. Tippe auf „＋ Termin“.</p>');
+  } else {
+    const from = isoDay(), to = addDays(from, 60);
+    const ents = calendarEntries(from, to); const by = {};
+    ents.forEach(e => (by[e.date] ||= []).push(e));
+    const keys = Object.keys(by);
+    $('#dayList').innerHTML = keys.map(d => `<p class="daylabel">${dayLabel(d)}</p>${by[d].map(evHtml).join('')}`).join('') || '<p class="hint">In den nächsten zwei Monaten steht nichts an.</p>';
+  }
+  $('#dayList').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => openForm(load(TERM_KEY, []).find(t => t.id === b.dataset.edit)));
+  $('#dayList').querySelectorAll('[data-ics]').forEach(a => a.addEventListener('click', () => setTimeout(() => {
+    const l = load(TERM_KEY, []); const t = l.find(x => x.id === a.dataset.ics);
+    if (t) { t.inCalBy = [...new Set([...(t.inCalBy || []), myUid()])]; t.updatedAt = Date.now(); save(TERM_KEY, l); render(); }
+  }, 500)));
+}
+
+function openForm(t) {
+  editing = t || null;
+  $('#form').hidden = false;
+  $('#formTitle').textContent = t ? 'Termin bearbeiten' : 'Neuer Termin';
+  $('#fTitle').value = t?.title || ''; $('#fDate').value = t?.date || sel; $('#fTime').value = t?.time || ''; $('#fNote').value = t?.note || '';
+  who = t ? fieldsToWho(t) : GEM;
+  chipGroup($('#fWho'), whoChoices(), who, v => who = v);
+  $('#fDelete').hidden = !t;
+  $('#form').scrollIntoView({ behavior: 'smooth', block: 'start' }); if (!t) setTimeout(() => $('#fTitle').focus(), 300);
+}
+function closeForm() { $('#form').hidden = true; editing = null; }
+$('#newBtn').onclick = () => openForm();
+$('#fCancel').onclick = closeForm;
+$('#fSave').onclick = () => {
+  const title = $('#fTitle').value.trim(), date = $('#fDate').value;
+  if (!title || !date) return showMsg('Bitte Titel und Tag eintragen.', 'warn', 3000);
+  const l = load(TERM_KEY, []), now = Date.now();
+  const data = { title, date, time: $('#fTime').value || '', note: $('#fNote').value.trim(), ...whoToFields(who) };
+  if (editing) { const t = l.find(x => x.id === editing.id); if (t) { const moved = t.date !== date || t.time !== data.time; Object.assign(t, data, { updatedAt: now }); if (moved) t.inCalBy = []; } }
+  else l.push({ id: crypto.randomUUID(), ...data, createdAt: now, updatedAt: now });
+  save(TERM_KEY, l); sel = date; month = date.slice(0, 7); closeForm(); render();
+  showMsg(editing ? 'Termin geändert.' : (window.hhSync?.household() ? 'Termin gespeichert. Alle im Haushalt sehen ihn.' : 'Termin gespeichert.'), 'ok', 3000);
+};
+$('#fDelete').onclick = e => {
+  const b = e.currentTarget; if (!b.dataset.c) { b.dataset.c = 1; b.textContent = 'Wirklich löschen?'; return; }
+  b.dataset.c = ''; b.textContent = 'Löschen';
+  save(TERM_KEY, load(TERM_KEY, []).filter(t => t.id !== editing.id)); closeForm(); render();
+};
+$('#prev').onclick = () => { const [y, m] = month.split('-').map(Number); month = isoDay(new Date(y, m - 2, 1)).slice(0, 7); render(); };
+$('#next').onclick = () => { const [y, m] = month.split('-').map(Number); month = isoDay(new Date(y, m, 1)).slice(0, 7); render(); };
+// ?d=YYYY-MM-DD öffnet einen bestimmten Tag (z. B. von der Startseite)
+const qd = new URLSearchParams(location.search).get('d'); if (/^\d{4}-\d{2}-\d{2}$/.test(qd || '')) { sel = qd; month = qd.slice(0, 7); view = 'Monat'; }
+render();
+onSync(k => { if ([TERM_KEY, TODO_KEY, CLEAN_KEY, 'hh-pflanzen', 'seen'].includes(k) && $('#form').hidden) render(); });
+window.hhSync?.markSeen(TERM_KEY);
+</script>
+</body>
+</html>
