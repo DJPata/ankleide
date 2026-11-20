@@ -7,6 +7,10 @@ const dataUrl = im => `data:${im.mime};base64,${im.data}`;
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_TEXT = 'gemini-3.5-flash';
 const FALLBACK_TEXT = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+// Für einfache Erkennung (Pflanze, Zutaten, Kleidung): das schnellste Modell zuerst
+const FAST_TEXT = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+// Modelle, die den Parameter fürs „Nachdenken“ nicht kennen, merken wir uns
+const NO_THINK_KEY = 'hh-nothink';
 function getCfg() { try { return { textModel: DEFAULT_TEXT, ...JSON.parse(localStorage.getItem('ankleide-cfg') || '{}') }; } catch { return { textModel: DEFAULT_TEXT }; } }
 function setCfg(patch) { const c = { ...getCfg(), ...patch }; try { localStorage.setItem('ankleide-cfg', JSON.stringify(c)); } catch {} return c; }
 
@@ -15,19 +19,33 @@ function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); 
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function geminiOnce(model, key, parts, generationConfig) {
+async function geminiOnce(model, key, parts, generationConfig, think) {
+  const noThink = load(NO_THINK_KEY, []);
+  const gc = { ...generationConfig };
+  // Gemini „denkt“ sonst vor jeder Antwort nach. Für Erkennen und Sortieren reicht wenig davon, das spart viel Zeit.
+  if (think && !noThink.includes(model)) gc.thinkingConfig = { thinkingLevel: think };
   let res;
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 60000);
   try {
     res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gc }), signal: ctl.signal,
     });
-  } catch { throw new Error('Keine Verbindung zu Google. Prüfe dein Internet.'); }
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw Object.assign(new Error('Google hat zu lange gebraucht.'), { next: true });
+    throw new Error('Keine Verbindung zu Google. Prüfe dein Internet.');
+  }
+  clearTimeout(timer);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const m = data?.error?.message || `Fehler ${res.status}`;
     const e = new Error('Gemini: ' + m);
     e.raw = `${res.status} ${m}`;
+    if (res.status === 400 && gc.thinkingConfig && /think/i.test(m)) {
+      save(NO_THINK_KEY, [...noThink, model]);
+      return geminiOnce(model, key, parts, generationConfig, null);
+    }
     if (res.status === 400 && /API key/i.test(m)) { e.message = 'Der Gemini-Schlüssel ist ungültig. Prüfe ihn auf der Startseite unter „Einstellungen“.'; return Promise.reject(e); }
     if (res.status === 404) { e.next = true; e.message = `Das Modell „${model}“ gibt es nicht (mehr).`; }
     if (res.status === 429 || res.status >= 500) { e.next = true; e.retry = true; e.message = 'Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.'; }
@@ -39,23 +57,25 @@ async function geminiOnce(model, key, parts, generationConfig) {
 }
 
 // Wiederholt bei Überlastung und weicht auf Ersatzmodelle aus.
-async function gemini(parts, generationConfig = {}) {
+async function gemini(parts, generationConfig = {}, opts = {}) {
   const cfg = getCfg();
   if (!cfg.key) throw new Error('Trag zuerst auf der Startseite unter „Einstellungen“ deinen Gemini-Schlüssel ein.');
-  const models = [cfg.textModel || DEFAULT_TEXT, ...FALLBACK_TEXT.filter(m => m !== cfg.textModel)];
+  const first = opts.fast ? FAST_TEXT : [cfg.textModel || DEFAULT_TEXT, ...FALLBACK_TEXT];
+  const models = [...new Set(first)];
+  const think = opts.think ?? (opts.fast ? 'minimal' : 'low');
   let last;
   for (const m of models) {
     for (let a = 0; a < 2; a++) {
-      try { return await geminiOnce(m, cfg.key, parts, generationConfig); }
-      catch (e) { last = e; if (!e.next) throw e; if (!e.retry || a === 1) break; await sleep(2000); }
+      try { return await geminiOnce(m, cfg.key, parts, generationConfig, think); }
+      catch (e) { last = e; if (!e.next) throw e; if (!e.retry || a === 1) break; await sleep(1000); }
     }
   }
   throw last;
 }
 
-async function geminiJson(prompt, images = []) {
+async function geminiJson(prompt, images = [], opts = {}) {
   const parts = [{ text: prompt }, ...images.map(im => ({ inline_data: { mime_type: im.mime, data: im.data } }))];
-  const out = await gemini(parts, { responseMimeType: 'application/json', temperature: 0.7 });
+  const out = await gemini(parts, { responseMimeType: 'application/json', temperature: 0.7 }, opts);
   const text = out.map(p => p.text || '').join('');
   try { return JSON.parse(text); }
   catch { const m = text.match(/[\[{][\s\S]*[\]}]/); if (m) return JSON.parse(m[0]); throw new Error('Antwort von Gemini war unverständlich. Bitte nochmal.'); }
@@ -83,8 +103,18 @@ function showMsg(text, kind = 'err', ms = 9000) {
 }
 
 function busy(btn, on, label) {
-  if (on) { btn.dataset.l = btn.innerHTML; btn.innerHTML = `<span class="spinner"></span> ${label}`; btn.disabled = true; }
-  else { btn.innerHTML = btn.dataset.l; btn.disabled = false; }
+  clearInterval(btn._t);
+  if (on) {
+    btn.dataset.l = btn.innerHTML; btn.disabled = true; const t0 = Date.now();
+    const draw = () => { const s = Math.floor((Date.now() - t0) / 1000); btn.innerHTML = `<span class="spinner"></span> ${label}${s >= 2 ? ` <span style="opacity:.6;font-variant-numeric:tabular-nums">${s} s</span>` : ''}`; };
+    draw(); btn._t = setInterval(draw, 1000);
+  } else { btn.innerHTML = btn.dataset.l; btn.disabled = false; }
+}
+
+// Text-Knoten mit mitlaufenden Sekunden, gibt eine Stopp-Funktion zurück
+function tickText(node, label) {
+  const t0 = Date.now(); const draw = () => { const s = Math.floor((Date.now() - t0) / 1000); node.textContent = label + (s >= 2 ? ` ${s} s` : ''); };
+  draw(); const t = setInterval(draw, 1000); return () => clearInterval(t);
 }
 
 function chipGroup(el, options, current, onPick) {

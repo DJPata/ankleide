@@ -96,7 +96,7 @@ $('#sumBtn').onclick = async () => {
 - Jedem Eintrag eine Supermarkt-Abteilung geben, aus: "Obst & Gemüse", "Brot & Backwaren", "Kühlregal", "Fleisch & Fisch", "Tiefkühl", "Vorrat & Konserven", "Gewürze & Backen", "Getränke", "Drogerie & Putzmittel", "Sonstiges".
 - "sources": die Rezepte/Zwecke aus der Eingabe, für die der Eintrag gebraucht wird (leer, wenn keiner).
 Eingabe (JSON): ${JSON.stringify(open.map(i => ({ text: i.text, for: i.source || '' })))}
-Antworte NUR mit JSON: {"items": [{"text": "...", "group": "...", "sources": ["..."]}]}`);
+Antworte NUR mit JSON: {"items": [{"text": "...", "group": "...", "sources": ["..."]}]}`, [], { fast: true });
     const merged = (r.items || []).filter(i => i.text).map(i => ({ id: crypto.randomUUID(), text: i.text, group: i.group || 'Sonstiges', source: (i.sources || []).filter(Boolean).join(', '), done: false }));
     if (!merged.length) throw new Error('Zusammenfassen hat nichts ergeben. Bitte nochmal versuchen.');
     list = [...merged, ...list.filter(i => i.done)]; persist(); render();

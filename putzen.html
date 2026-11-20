@@ -60,7 +60,7 @@ requireKeyBanner();
 
 $('#photoInput').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { photo = await shrink(f, 1280); $('#photo').src = dataUrl(photo); $('#photo').hidden = false; $('#result').hidden = true; }
+  try { photo = await shrink(f, 1024); $('#photo').src = dataUrl(photo); $('#photo').hidden = false; $('#result').hidden = true; }
   catch (err) { showMsg(err.message); }
 };
 

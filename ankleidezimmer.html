@@ -295,18 +295,32 @@ function saveSettings() {
   try { localStorage.setItem('ankleide-cfg', JSON.stringify(cfg)); } catch {}
 }
 
-async function geminiOnce(model, parts, generationConfig = {}) {
+const NO_THINK_KEY = 'hh-nothink';
+const noThink = () => { try { return JSON.parse(localStorage.getItem(NO_THINK_KEY) || '[]'); } catch { return []; } };
+async function geminiOnce(model, parts, generationConfig = {}, think) {
   if (!cfg.key) throw new Error('Kein Gemini-Schlüssel eingetragen. Tippe oben auf ⚙︎.');
-  let res;
+  const gc = { ...generationConfig };
+  const useThink = think && !/image|banana/.test(model) && !noThink().includes(model);
+  if (useThink) gc.thinkingConfig = { thinkingLevel: think };
+  let res; const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), /image|banana/.test(model) ? 120000 : 60000);
   try {
     res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key }, signal: ctrl.signal,
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gc }),
     });
-  } catch { throw new Error('Keine Verbindung zu Google. Prüfe dein Internet.'); }
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw Object.assign(new Error('Google hat zu lange gebraucht. Bitte nochmal versuchen.'), { next: true, raw: 'timeout' });
+    throw new Error('Keine Verbindung zu Google. Prüfe dein Internet.');
+  }
   const data = await res.json().catch(() => ({}));
+  clearTimeout(timer);
   if (!res.ok) {
     const m = data?.error?.message || `Fehler ${res.status}`;
+    if (res.status === 400 && useThink && /think/i.test(m)) {
+      try { localStorage.setItem(NO_THINK_KEY, JSON.stringify([...noThink(), model])); } catch {}
+      return geminiOnce(model, parts, generationConfig);
+    }
     if (res.status === 400 && /API key/i.test(m)) throw new Error('Der Gemini-Schlüssel ist ungültig. Prüfe ihn unter ⚙︎.');
     const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next, raw: `${res.status} ${m}` });
     if (res.status === 404) throw err(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`, false, true);
@@ -326,25 +340,27 @@ const img = im => ({ inline_data: { mime_type: im.mime || 'image/jpeg', data: im
 const FALLBACK_TEXT = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 const FALLBACK_IMAGE = ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-async function gemini(model, parts, generationConfig = {}) {
-  const pool = /image|banana/.test(model) ? FALLBACK_IMAGE : FALLBACK_TEXT;
-  const models = [model, ...pool.filter(m => m !== model)];
+const FAST_TEXT = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+async function gemini(model, parts, generationConfig = {}, opts = {}) {
+  const pool = /image|banana/.test(model) ? FALLBACK_IMAGE : opts.fast ? FAST_TEXT : FALLBACK_TEXT;
+  const models = opts.fast ? pool : [model, ...pool.filter(m => m !== model)];
+  const think = /image|banana/.test(model) ? undefined : (opts.think ?? (opts.fast ? 'minimal' : 'low'));
   let last; const tried = [];
   for (const m of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      try { return await geminiOnce(m, parts, generationConfig); }
+      try { return await geminiOnce(m, parts, generationConfig, think); }
       catch (e) {
         last = e; tried.push(`${m}: ${e.raw || e.message}`);
         if (!e.next) { e.details = tried; throw e; }
         if (!e.retry || attempt === 1) break;
-        await sleep(2000);
+        await sleep(1000);
       }
     }
   }
   last.details = tried; throw last;
 }
-async function geminiJson(parts) {
-  const out = await gemini(cfg.textModel, parts, { responseMimeType: 'application/json', temperature: 0.6 });
+async function geminiJson(parts, opts = {}) {
+  const out = await gemini(cfg.textModel, parts, { responseMimeType: 'application/json', temperature: 0.6 }, opts);
   const text = out.map(p => p.text || '').join('');
   try { return JSON.parse(text); } catch { const m = text.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); throw new Error('Antwort von Gemini war unverständlich. Bitte nochmal.'); }
 }
@@ -353,7 +369,7 @@ const CATEGORIES = ['Oberteil', 'Hose', 'Rock', 'Kleid', 'Pullover', 'Jacke', 'M
 const handlers = {
   async '/api/tag'({ image }) {
     const t = await geminiJson([{ text: `Du bist Mode-Assistent. Analysiere das Kleidungsstück auf dem Foto.
-Antworte NUR mit JSON: {"category": eine aus ${JSON.stringify(CATEGORIES)}, "name": kurzer deutscher Name, "color": Hauptfarbe(n), "pattern": Muster oder "uni", "material": vermutetes Material, "formality": Zahl 1 (sehr leger) bis 5 (sehr formell), "seasons": Liste aus ["Frühling","Sommer","Herbst","Winter"], "description": ein Satz, der das Teil für einen Stylisten genau beschreibt}` }, img(image)]);
+Antworte NUR mit JSON: {"category": eine aus ${JSON.stringify(CATEGORIES)}, "name": kurzer deutscher Name, "color": Hauptfarbe(n), "pattern": Muster oder "uni", "material": vermutetes Material, "formality": Zahl 1 (sehr leger) bis 5 (sehr formell), "seasons": Liste aus ["Frühling","Sommer","Herbst","Winter"], "description": ein Satz, der das Teil für einen Stylisten genau beschreibt}` }, img(image)], { fast: true });
     return { category: t.category, name: t.name, color: t.color, pattern: t.pattern, material: t.material, formality: t.formality, seasons: t.seasons, description: t.description };
   },
   async '/api/suggest'({ occasion, notes, weather, items: list, person }) {

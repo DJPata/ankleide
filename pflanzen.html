@@ -128,7 +128,7 @@ function render() {
 
 async function identify(images, nameHint) {
   const btns = [$('#nameBtn')]; const label = $('#photoInput').parentElement;
-  label.firstChild.textContent = '⏳ Erkenne Pflanze …'; busy(btns[0], true, '…');
+  const stopTick = tickText(label.firstChild, '⏳ Erkenne Pflanze …'); busy(btns[0], true, '…');
   try {
     const r = await geminiJson(`Du bist Gärtner und Pflanzenexperte. ${images.length ? 'Bestimme die Pflanze auf dem Foto.' : `Die Pflanze heißt: "${nameHint}".`}
 Standort: ${where}${$('#room').value.trim() ? ', ' + $('#room').value.trim() : ''}. Klima: Mitteleuropa (Deutschland).
@@ -140,7 +140,7 @@ Antworte NUR mit JSON auf Deutsch:
  "light": "Lichtbedarf kurz", "care": "wichtigster Pflegetipp (Dünger, Umtopfen, Schnitt)",
  "outdoorNote": "nur bei draußen: Hinweis zu Regen/Frost, sonst leer",
  "toxic": "Hinweis falls giftig für Katzen/Hunde/Kinder, sonst leer",
- "confidence": "hoch|mittel|niedrig"}`, images);
+ "confidence": "hoch|mittel|niedrig"}`, images, { fast: true });
     if (!r.name) throw new Error('Ich konnte die Pflanze nicht erkennen. Versuch ein Foto, auf dem die Blätter gut zu sehen sind.');
     const p = { id: crypto.randomUUID(), name: r.name, species: r.species, emoji: r.emoji, location: where, room: $('#room').value.trim(),
       summer: +r.summer || 7, winter: +r.winter || 14, water: r.water, light: r.light, care: r.care, outdoorNote: r.outdoorNote, toxic: r.toxic,
@@ -149,12 +149,12 @@ Antworte NUR mit JSON auf Deutsch:
     showMsg(`${p.emoji || '🪴'} ${p.name} hinzugefügt${r.confidence === 'niedrig' ? ' (unsicher erkannt, prüf den Namen)' : ''}. Ich gehe davon aus, dass du sie heute gegossen hast.`, 'ok', 6000);
     $('#byName').value = '';
   } catch (e) { showMsg(e.message); }
-  label.firstChild.textContent = '📷 Pflanze fotografieren'; busy(btns[0], false);
+  stopTick(); label.firstChild.textContent = '📷 Pflanze fotografieren'; busy(btns[0], false);
 }
 
 $('#photoInput').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { identify([await shrink(f, 1024)]); } catch (err) { showMsg(err.message); }
+  try { identify([await shrink(f, 768)]); } catch (err) { showMsg(err.message); }
 };
 $('#nameBtn').onclick = () => { const v = $('#byName').value.trim(); if (v) identify([], v); };
 $('#byName').onkeydown = e => { if (e.key === 'Enter') $('#nameBtn').click(); };
