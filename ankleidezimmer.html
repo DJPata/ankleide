@@ -68,6 +68,7 @@
   .banner { padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; }
   .banner.warn { background: #2a2314; color: #f2d491; }
   .banner.err { background: #2c1714; color: var(--danger); }
+  .banner.ok { background: #1c1a16; color: var(--ink); border: 1px solid #3a3328; }
   .spinner { width: 18px; height: 18px; border: 3px solid currentColor; border-right-color: transparent;
     border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -102,6 +103,14 @@
   .tipcard[open] summary::after { content: "－"; }
   .tipcard[open] summary { margin-bottom: 8px; }
   .tryon .placeholder { border-radius: 18px; border-color: #2e2e34; }
+  .op { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .op:last-of-type { border-bottom: 0; }
+  .op img { width: 72px; height: 88px; object-fit: cover; border-radius: 12px; background: var(--line); }
+  .op b { display: block; } .op small { color: var(--muted); display: block; font-size: 13px; }
+  .op .dupe { color: var(--accent); }
+  .op input[type=checkbox] { width: 26px; height: 26px; accent-color: var(--accent); }
+  .op.off { opacity: .5; }
+  label.btn.wait { opacity: .6; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -132,6 +141,21 @@
         <label class="btn secondary" style="margin:0;color:var(--ink)">📷 Kamera
           <input id="itemCam" type="file" accept="image/*" capture="environment">
         </label>
+      </div>
+      <p class="hint" style="margin-top:14px">Oder: Ein Foto von dir in einem kompletten Outfit (Spiegel-Selfie oder aus deinen Fotos). Ich erkenne jedes Teil und lege es einzeln im Schrank ab.</p>
+      <div class="row">
+        <label class="btn secondary" id="outfitLabel" style="margin:0;color:var(--ink)">🧍 Outfit-Foto zerlegen
+          <input id="outfitInput" type="file" accept="image/*">
+        </label>
+      </div>
+      <div id="outfitPreview" hidden style="margin-top:14px">
+        <img id="outfitSrc" alt="Dein Outfit-Foto" style="max-width:140px;border-radius:12px;display:block;margin-bottom:8px">
+        <div id="outfitParts"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" id="outfitApply">✓ Ausgewählte übernehmen</button>
+          <button class="btn secondary" id="outfitDiscard">Verwerfen</button>
+        </div>
+        <p class="hint" style="margin-top:8px">Haken weg bei Teilen, die du nicht willst. Teile, die schon im Schrank sind, habe ich abgewählt.</p>
       </div>
     </div>
 <details class="card tipcard"><summary><h2 style="display:inline">So klappt die Anprobe am besten</h2></summary><ul class="tips">
@@ -372,6 +396,16 @@ const handlers = {
 Antworte NUR mit JSON: {"category": eine aus ${JSON.stringify(CATEGORIES)}, "name": kurzer deutscher Name, "color": Hauptfarbe(n), "pattern": Muster oder "uni", "material": vermutetes Material, "formality": Zahl 1 (sehr leger) bis 5 (sehr formell), "seasons": Liste aus ["Frühling","Sommer","Herbst","Winter"], "description": ein Satz, der das Teil für einen Stylisten genau beschreibt}` }, img(image)], { fast: true });
     return { category: t.category, name: t.name, color: t.color, pattern: t.pattern, material: t.material, formality: t.formality, seasons: t.seasons, description: t.description };
   },
+  async '/api/outfit'({ image, existing }) {
+    const r = await geminiJson([{ text: `Du bist Mode-Assistent. Auf dem Foto trägt eine Person ein Outfit (oft ein Spiegel-Selfie).
+Finde JEDES sichtbar getragene Kleidungsstück einzeln: Oberteil, Hose/Rock, Jacke, Schuhe, gut sichtbare Accessoires (Gürtel, Mütze, Tasche, Uhr nur wenn deutlich).
+Das Handy in der Hand, Möbel und andere Personen ignorieren. Nichts erfinden, was nicht zu sehen ist.
+Für jedes Teil "box_2d": [ymin, xmin, ymax, xmax] normiert auf 0–1000, eng um das Teil.
+Vorhandener Kleiderschrank (JSON): ${JSON.stringify(existing)}
+Ist ein Teil offensichtlich dasselbe wie ein vorhandenes (gleiche Art, Farbe, Muster), setze "sameAs" auf dessen id, sonst null.
+Antworte NUR mit JSON: {"items": [{"category": eine aus ${JSON.stringify(CATEGORIES)}, "name": kurzer deutscher Name, "color": Hauptfarbe(n), "pattern": Muster oder "uni", "material": vermutetes Material, "formality": 1–5, "seasons": Liste aus ["Frühling","Sommer","Herbst","Winter"], "description": ein Satz für einen Stylisten, "box_2d": [ymin,xmin,ymax,xmax], "sameAs": id oder null}]}` }, img(image)]);
+    return (r.items || []).filter(i => i && i.name);
+  },
   async '/api/suggest'({ occasion, notes, weather, items: list, person }) {
     const r = await geminiJson([{ text: `Du bist ein erfahrener persönlicher Stylist. Stelle aus dem Kleiderschrank unten EIN stimmiges Outfit zusammen.
 Anlass: ${occasion}
@@ -502,6 +536,63 @@ async function addFiles(files) {
 }
 $('#itemInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
 $('#itemCam').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+
+// ---------- Outfit-Foto in Einzelteile zerlegen ----------
+let outfitParts = [];
+const loadImg = file => new Promise((res, rej) => { const url = URL.createObjectURL(file), im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('Bild konnte nicht gelesen werden')); im.src = url; });
+function cropPart(im, box) {
+  let [y0, x0, y1, x1] = (box || []).map(Number);
+  if (![y0, x0, y1, x1].every(Number.isFinite) || y1 <= y0 || x1 <= x0) [y0, x0, y1, x1] = [0, 0, 1000, 1000];
+  const W = im.naturalWidth, H = im.naturalHeight, padX = (x1 - x0) * .08, padY = (y1 - y0) * .08;
+  const sx = Math.max(0, (x0 - padX) / 1000 * W), sy = Math.max(0, (y0 - padY) / 1000 * H);
+  const sw = Math.min(W, (x1 + padX) / 1000 * W) - sx, sh = Math.min(H, (y1 + padY) / 1000 * H) - sy;
+  const k = Math.min(1, 768 / Math.max(sw, sh)), c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(sw * k)); c.height = Math.max(1, Math.round(sh * k));
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  return { mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.86).split(',')[1] };
+}
+function renderOutfit() {
+  $('#outfitPreview').hidden = !outfitParts.length;
+  $('#outfitParts').innerHTML = `<p class="hint" style="margin:0 0 4px">${outfitParts.length} ${outfitParts.length === 1 ? 'Teil' : 'Teile'} erkannt:</p>` + outfitParts.map((p, i) => {
+    const dupe = p.sameAs && items.find(x => x.id === p.sameAs);
+    return `<label class="op ${p.on ? '' : 'off'}"><img src="${dataUrl(p.image)}" alt="${esc(p.name)}">
+      <span><b>${esc(p.name)}</b><small>${esc([p.category, p.color].filter(Boolean).join(' · '))}</small>${dupe ? `<small class="dupe">Schon im Schrank: ${esc(dupe.name)}</small>` : ''}</span>
+      <input type="checkbox" data-op="${i}" ${p.on ? 'checked' : ''} aria-label="${esc(p.name)} übernehmen"></label>`;
+  }).join('');
+  $('#outfitParts').querySelectorAll('[data-op]').forEach(c => c.onchange = () => { outfitParts[+c.dataset.op].on = c.checked; renderOutfit(); });
+  const n = outfitParts.filter(p => p.on).length;
+  $('#outfitApply').disabled = !n; $('#outfitApply').textContent = n ? `✓ ${n} ${n === 1 ? 'Teil' : 'Teile'} übernehmen` : 'Nichts ausgewählt';
+}
+$('#outfitInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const label = $('#outfitLabel'), txt = label.firstChild, t0 = Date.now();
+  label.classList.add('wait');
+  const tick = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); txt.textContent = `⏳ Erkenne Teile … ${s >= 2 ? s + ' s' : ''}`; }, 1000);
+  txt.textContent = '⏳ Erkenne Teile … ';
+  try {
+    const [full, im] = await Promise.all([shrink(f, 1280), loadImg(f)]);
+    $('#outfitSrc').src = dataUrl(full);
+    const existing = items.filter(i => i.name).map(i => ({ id: i.id, name: i.name, category: i.category, color: i.color, pattern: i.pattern }));
+    const found = await api('/api/outfit', { image: full, existing });
+    if (!found.length) throw new Error('Ich konnte auf dem Foto keine Kleidung erkennen. Am besten ganzer Körper, gutes Licht.');
+    const valid = new Set(items.map(i => i.id));
+    outfitParts = found.map(p => ({ ...p, sameAs: valid.has(p.sameAs) ? p.sameAs : null, image: cropPart(im, p.box_2d) })).map(p => ({ ...p, on: !p.sameAs }));
+    URL.revokeObjectURL(im.src);
+    renderOutfit(); $('#outfitPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) { showError(err.message); }
+  clearInterval(tick); txt.textContent = '🧍 Outfit-Foto zerlegen '; label.classList.remove('wait');
+};
+$('#outfitApply').onclick = async () => {
+  const pick = outfitParts.filter(p => p.on), now = Date.now();
+  for (const [k, p] of pick.entries()) {
+    const it = { id: crypto.randomUUID(), image: p.image, added: now - k, fromOutfit: true, category: p.category, name: p.name, color: p.color, pattern: p.pattern, material: p.material, formality: p.formality, seasons: p.seasons, description: p.description };
+    items.unshift(it); await DB.putItem(it);
+  }
+  outfitParts = []; renderOutfit(); filter = 'Alle'; renderWardrobe();
+  $('#status').innerHTML = `<div class="banner ok">${pick.length} ${pick.length === 1 ? 'Teil' : 'Teile'} im Schrank gespeichert.</div>`;
+  setTimeout(() => { $('#status').innerHTML = ''; }, 5000);
+};
+$('#outfitDiscard').onclick = () => { outfitParts = []; renderOutfit(); };
 
 // ---------- Porträt ----------
 let portrait = null;
