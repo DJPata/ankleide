@@ -204,7 +204,7 @@ function foldSections() {
 document.addEventListener('DOMContentLoaded', foldSections);
 
 // Kalender-Datei (.ics) für Aufgaben mit Datum. Antippen öffnet auf dem iPhone „Kalender“ zum Übernehmen.
-function icsEsc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
+function icsEsc(s) { s = String(s || ''); if (s.toWellFormed) s = s.toWellFormed(); return s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, m => '\\' + m); }
 function tasksIcsUrl(ts) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
   const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Haushaltshilfe//Sprach-To-do//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];

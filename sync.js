@@ -46,7 +46,7 @@
     if (/permission/i.test(m)) return 'Keine Berechtigung. Sind die Firestore-Regeln veröffentlicht?';
     if (/unauthorized-domain/i.test(m)) return 'djpata.github.io fehlt in Firebase unter „Autorisierte Domains“.';
     if (/network|offline|unavailable|Failed to fetch|import/i.test(m)) return 'Keine Verbindung. Ich versuche es später nochmal.';
-    return m;
+    return e?.message && e.message !== m ? `${m}: ${e.message}` : m;
   }
 
   // ---------- lokale Ablage pro Haushalt ----------
@@ -58,6 +58,23 @@
     for (const k of STORE_KEYS) { const v = localStorage.getItem(sk(id, k)); if (v != null) localStorage.setItem(k, v); else localStorage.removeItem(k); localStorage.removeItem(sk(id, k)); }
   }
   function dropStash(id) { for (const k of STORE_KEYS) localStorage.removeItem(sk(id, k)); }
+
+  // Firestore mag kein undefined, keine Listen in Listen, keine Felder wie „__x__“ und keine kaputten Zeichen
+  function clean(v, depth = 0) {
+    if (v === undefined || typeof v === 'function') return undefined;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (typeof v === 'string') { const t = v.toWellFormed ? v.toWellFormed() : v.replace(/[\uD800-\uDFFF]/g, '�'); return t.length > 200000 ? t.slice(0, 200000) : t; }
+    if (v === null || typeof v !== 'object') return v;
+    if (depth > 15) return JSON.stringify(v).slice(0, 200000);
+    if (Array.isArray(v)) return v.map(x => Array.isArray(x) ? JSON.stringify(x) : clean(x, depth + 1)).filter(x => x !== undefined);
+    const o = {};
+    for (const [k, x] of Object.entries(v)) {
+      if (!k || /^__.*__$/.test(k) || k.length > 1000) continue;
+      const c = clean(x, depth + 1); if (c !== undefined) o[k] = c;
+    }
+    return o;
+  }
+  const validId = id => typeof id === 'string' && id && id !== '.' && id !== '..' && !id.includes('/') && !/^__.*__$/.test(id) && id.length < 1000;
 
   // Alle lokalen Einträge als „hochladen“ markieren (nur beim ersten Haushalt: vorhandene Daten ziehen mit um)
   function markAllDirty() {
@@ -74,6 +91,7 @@
     flushing[id] = true;
     const get = k => { try { return JSON.parse(localStorage.getItem(id === hid ? k : sk(id, k))); } catch { return null; } };
     const put = (k, v) => localStorage.setItem(id === hid ? k : sk(id, k), JSON.stringify(v));
+    const bad = [];
     try {
       do {
         again[id] = false;
@@ -81,16 +99,25 @@
         for (const k of Object.keys(dirty)) {
           const list = get(k) || [];
           for (const [eid, what] of Object.entries(dirty[k])) {
-            const ref = fb.doc(db, 'households', id, col(k), eid);
             const it = list.find(x => x.id === eid);
-            if (what === 'del' || !it) await fb.setDoc(ref, { id: eid, deleted: true, updatedAt: Date.now() });
-            else await fb.setDoc(ref, { ...JSON.parse(JSON.stringify(it)), deleted: false });
+            try {
+              if (!validId(eid)) throw Object.assign(new Error('ungültige id'), { code: 'invalid-argument' });
+              const ref = fb.doc(db, 'households', id, col(k), eid);
+              if (what === 'del' || !it) await fb.setDoc(ref, { id: eid, deleted: true, updatedAt: Date.now() });
+              else await fb.setDoc(ref, { ...clean(it), deleted: false });
+            } catch (e) {
+              // Ein kaputter Eintrag soll nicht alles blockieren: merken und weitermachen
+              if (!/invalid-argument|INVALID_ARGUMENT|invalid data|Unsupported field|not a valid/i.test(String(e.code) + ' ' + e.message)) throw e;
+              console.warn('Eintrag übersprungen', k, eid, e);
+              bad.push(`${col(k)}: ${(it && (it.title || it.text || it.name)) || eid} (${e.message})`);
+            }
             const cur = get(DIRTY_KEY) || {}; if (cur[k]?.[eid] === what) { delete cur[k][eid]; put(DIRTY_KEY, cur); }
           }
         }
       } while (again[id]);
       if (id === hid) setStatus({ state: 'on', error: '' });
-    } catch (e) { if (id === hid) setStatus({ state: 'error', error: friendly(e) }); }
+      if (bad.length) console.warn('Nicht synchronisiert:', bad);
+    } catch (e) { console.warn('Sync-Fehler beim Hochladen', e); if (id === hid) setStatus({ state: 'error', error: `${friendly(e)} (Hochladen)` }); }
     flushing[id] = false;
   }
   const flushAll = () => households().forEach(h => flush(h.id));
@@ -120,7 +147,7 @@
       const l = households(), h = l.find(x => x.id === id);
       if (h && d.name && h.name !== d.name) { h.name = d.name; setHouseholds(l); renderSwitcher(); setStatus({}); }
       if (d.geminiKey && !getCfg().key) { setCfg({ key: d.geminiKey }); window.dispatchEvent(new CustomEvent('hh-sync', { detail: { key: 'cfg' } })); }
-    }, e => setStatus({ state: 'error', error: friendly(e) })));
+    }, e => listenError(e, 'Haushalt')));
     // Lesebestätigung: households/{id}/seen/{uid} = { einkauf: Zeitpunkt, todo: …, putzplan: … }
     unsubs.push(fb.onSnapshot(fb.collection(db, 'households', id, 'seen'), snap => {
       snap.docChanges().forEach(c => { seen[c.doc.id] = c.doc.data(); });
@@ -131,10 +158,17 @@
       unsubs.push(fb.onSnapshot(fb.collection(db, 'households', id, col(k)), snap => {
         const docs = snap.docChanges().filter(c => c.type !== 'removed' && !c.doc.metadata.hasPendingWrites).map(c => c.doc.data());
         if (docs.length) applyRemote(k, docs);
-      }, e => setStatus({ state: 'error', error: friendly(e) })));
+      }, e => listenError(e, col(k))));
     }
   }
 
+  // Fehler beim Mitlesen: anzeigen, wo es hakt, und nach kurzer Pause neu verbinden
+  let retries = 0, retryTimer = null;
+  function listenError(e, where) {
+    console.warn('Sync-Fehler', where, e);
+    setStatus({ state: 'error', error: `${friendly(e)} (${where})` });
+    if (retries < 3 && !retryTimer) retryTimer = setTimeout(() => { retryTimer = null; retries++; start(); }, 5000 * (retries + 1));
+  }
   async function start() {
     renderSwitcher();
     const h = household(); if (!configured() || !h) { setStatus({ state: configured() ? 'off' : 'unconfigured' }); return; }
@@ -146,9 +180,9 @@
       if (!snap.exists()) throw new Error('Diesen Haushalt gibt es nicht (mehr).');
       // z. B. nach „Zum Home-Bildschirm“: neues Gerät, gleicher Haushalt → automatisch wieder beitreten
       if (!(snap.data().members || []).includes(user.uid)) await fb.updateDoc(ref, { members: fb.arrayUnion(user.uid) });
-      listen(); await flush(hid);
+      listen(); await flush(hid); if (status.state !== 'error') retries = 0;
       households().filter(x => x.id !== hid).forEach(x => flush(x.id)); // Sprach-Einträge für andere Haushalte nachschicken
-    } catch (e) { setStatus({ state: 'error', error: friendly(e) }); }
+    } catch (e) { listenError(e, 'Verbinden'); }
   }
 
   // Zu einem anderen (oder neuen) Haushalt wechseln: aktuelle Listen wegpacken, die des anderen holen
