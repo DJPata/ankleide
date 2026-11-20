@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ankleidezimmer · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f7f4ef">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<style>
+  :root {
+    --bg: #f7f4ef; --card: #ffffff; --ink: #1f1c18; --muted: #6f675d; --line: #e4ddd2;
+    --accent: #7a4e2d; --accent-ink: #fff; --danger: #b3261e; --ok: #2e6b3f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171512; --card: #221f1b; --ink: #f1ece5; --muted: #a79e92; --line: #39342d;
+      --accent: #d29a6a; --accent-ink: #1b140e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: calc(20px + env(safe-area-inset-top)) 16px 8px; max-width: 960px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: .3px; }
+  header p { margin: 2px 0 0; color: var(--muted); }
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+  nav .inner { max-width: 960px; margin: 0 auto; display: flex; gap: 4px; padding: 0 12px; }
+  nav button { flex: 1 1 auto; background: none; border: 0; padding: 12px 8px; font: inherit; color: var(--muted);
+    border-bottom: 3px solid transparent; cursor: pointer; }
+  nav button.active { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px; }
+  section { display: none; } section.active { display: block; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 4px; font-size: 18px; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: var(--accent-ink);
+    border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  .btn.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .item { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: relative; }
+  .item img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--line); }
+  .item .meta { padding: 8px 10px; font-size: 13px; }
+  .item .meta b { display: block; font-size: 14px; }
+  .item .meta span { color: var(--muted); }
+  .item .del { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: #fff; border: 0;
+    border-radius: 50%; width: 28px; height: 28px; cursor: pointer; font-size: 16px; line-height: 28px; }
+  .item.busy::after { content: "analysiere…"; position: absolute; inset: 0; display: grid; place-items: center;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px;
+    padding: 8px 14px; font: inherit; font-size: 14px; cursor: pointer; }
+  .chip.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=password], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--ink); font: inherit; }
+  textarea { min-height: 60px; resize: vertical; }
+  .portrait { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .portrait img { width: 180px; aspect-ratio: 3/4; object-fit: cover; border-radius: 12px; background: var(--line); }
+  .result { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 760px) { .result { grid-template-columns: 1fr 1fr; } }
+  .tryon img { width: 100%; border-radius: 12px; display: block; }
+  .tryon .placeholder { aspect-ratio: 3/4; border: 2px dashed var(--line); border-radius: 12px; display: grid;
+    place-items: center; color: var(--muted); text-align: center; padding: 16px; }
+  .banner { padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; }
+  .banner.warn { background: #fff3cd; color: #5c4400; }
+  .banner.err { background: #fde8e6; color: var(--danger); }
+  @media (prefers-color-scheme: dark) { .banner.warn { background: #3d3216; color: #f3dc9b; }
+    .banner.err { background: #3d1c1a; color: #ffb4ab; } }
+  .spinner { width: 18px; height: 18px; border: 3px solid currentColor; border-right-color: transparent;
+    border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .filters { margin-bottom: 12px; }
+  ul.tips { margin: 8px 0 0; padding-left: 20px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <a href="./" class="back" style="color:var(--muted);text-decoration:none;font-size:15px">‹ Haushaltshilfe</a>
+  <h1>Ankleidezimmer</h1>
+  <p>Dein Kleiderschrank, dein Anlass, dein Look.</p>
+</header>
+<nav><div class="inner">
+  <button data-tab="schrank" class="active">Schrank</button>
+  <button data-tab="ich">Ich</button>
+  <button data-tab="anziehen">Anziehen</button>
+  <button data-tab="setup" aria-label="Einstellungen">⚙︎</button>
+</div></nav>
+
+<main>
+  <div id="status"></div>
+
+  <!-- SCHRANK -->
+  <section id="schrank" class="active">
+    <div class="card">
+      <h2>Kleidung hinzufügen</h2>
+      <p class="hint">Fotografiere jedes Teil einzeln, am besten flach hingelegt oder auf einem Bügel vor ruhigem Hintergrund. Die KI erkennt Art, Farbe und wie formell es ist.</p>
+      <div class="row">
+        <label class="btn" style="margin:0;color:var(--accent-ink)">＋ Fotos wählen
+          <input id="itemInput" type="file" accept="image/*" multiple>
+        </label>
+        <label class="btn secondary" style="margin:0;color:var(--ink)">📷 Kamera
+          <input id="itemCam" type="file" accept="image/*" capture="environment">
+        </label>
+      </div>
+    </div>
+<div class="card"><h2>So klappt die Anprobe am besten</h2><ul class="tips">
+        <li>Jedes Teil <b>einzeln</b> und <b>von vorne</b> fotografieren. Die Rückseite braucht die KI nicht.</li>
+        <li><b>Flach</b> auf Bett oder Boden legen oder an einen Bügel an eine helle Tür hängen. Ruhiger, einfarbiger Hintergrund.</li>
+        <li><b>Tageslicht</b> am Fenster, kein Blitz. Das ganze Teil muss im Bild sein, glatt gestrichen, nicht zerknüllt.</li>
+        <li>Von <b>oben</b> fotografieren, damit nichts schief oder verzerrt ist.</li>
+      </ul></div>
+    <div class="filters chips" id="filters"></div>
+    <div class="grid" id="wardrobe"></div>
+  </section>
+
+  <!-- ICH -->
+  <section id="ich">
+    <div class="card">
+      <h2>Dein Porträt</h2>
+      <p class="hint">Ein Ganzkörperfoto funktioniert am besten: gerade stehen, gutes Licht, enge oder schlichte Kleidung. Das Foto bleibt in deinem Browser und wird nur für die Anprobe an Gemini geschickt.</p>
+      <div class="portrait">
+        <img id="portraitImg" alt="">
+        <div>
+          <label class="btn" style="margin:0;color:var(--accent-ink)">Foto wählen
+            <input id="portraitInput" type="file" accept="image/*">
+          </label>
+          <label for="personNotes">Über dich (optional)</label>
+          <textarea id="personNotes" placeholder="z.B. 1,82 m, mag eher schlichte Farben, trage ungern Krawatte"></textarea>
+        </div>
+      </div>
+    </div>
+<div class="card"><h2>Das ideale Foto von dir</h2><ul class="tips">
+        <li><b>Ganzkörper</b> von Kopf bis Fuß, gerade stehend, Arme locker neben dem Körper.</li>
+        <li><b>Schlichte, enge Kleidung</b> (z. B. einfarbiges T-Shirt und Jeans). Keine Jacke, kein Mantel, keine Tasche.</li>
+        <li>Helle Wand dahinter, gutes Tageslicht, Kamera auf Brusthöhe. Am besten fotografiert dich jemand.</li>
+      </ul></div>
+  </section>
+
+  <!-- ANZIEHEN -->
+  <section id="anziehen">
+    <div class="card">
+      <h2>Wofür ziehst du dich an?</h2>
+      <div class="chips" id="occasions"></div>
+      <label for="occasionCustom">Oder eigener Anlass</label>
+      <input id="occasionCustom" type="text" placeholder="z.B. Taufe meiner Nichte im Garten">
+      <label for="weather">Wetter (optional)</label>
+      <input id="weather" type="text" placeholder="z.B. 8 °C, Regen">
+      <label for="notes">Wünsche (optional)</label>
+      <input id="notes" type="text" placeholder="z.B. lieber die dunkelblaue Hose, keine Turnschuhe">
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="suggestBtn">Outfit vorschlagen</button>
+      </div>
+    </div>
+
+    <div class="result" id="result" hidden>
+      <div class="card">
+        <h2 id="lookTitle"></h2>
+        <p id="lookReason"></p>
+        <ul class="tips" id="lookTips"></ul>
+        <p class="hint" id="lookMissing"></p>
+        <div class="grid" id="lookItems" style="margin-top:12px"></div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn secondary" id="againBtn">Anderer Vorschlag</button>
+        </div>
+      </div>
+      <div class="card tryon">
+        <h2>So sieht's an dir aus</h2>
+        <label for="provider">Anprobe mit</label>
+        <select id="provider">
+          <option value="free">Kostenlos (nur Oberteil, dauert 1–3 Min.)</option>
+          <option value="gemini">Gemini (ganzes Outfit, ca. 3–7 Cent)</option>
+          <option value="pro">Gemini Pro (beste Qualität, ca. 13 Cent)</option>
+        </select>
+        <p class="hint" id="providerHint" style="margin:6px 0 12px"></p>
+        <div id="tryonBox"><div class="placeholder">Klicke auf „Anprobieren“, um dich im Outfit zu sehen.</div></div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn" id="tryonBtn">Anprobieren</button>
+
+          <a class="btn secondary" id="downloadBtn" download="ankleide-look.png" hidden>Bild speichern</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EINSTELLUNGEN -->
+  <section id="setup">
+    <div class="card">
+      <h2>Gemini-Schlüssel</h2>
+      <p class="hint">Einmal eintragen, dann merkt sich die App den Schlüssel. Er bleibt nur auf diesem Gerät und wird ausschließlich an Google geschickt. Einen Schlüssel bekommst du unter <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.</p>
+      <label for="apiKey">API-Schlüssel</label>
+      <input id="apiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…">
+      <label for="hfToken">Hugging-Face-Token (optional, für mehr Gratis-Anproben)</label>
+      <input id="hfToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="hf_…">
+      <p class="hint" style="margin:4px 0 0">Kostenloses Konto auf <a href="https://huggingface.co/join" target="_blank" rel="noopener">huggingface.co</a>, dann unter <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">Settings → Access Tokens</a> einen „Read“-Token erstellen.</p>
+      <label for="textModel">Textmodell</label>
+      <input id="textModel" type="text" autocapitalize="off" spellcheck="false">
+      <label for="imageModel">Bildmodell (Anprobe)</label>
+      <input id="imageModel" type="text" autocapitalize="off" spellcheck="false">
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="saveKey">Speichern &amp; testen</button>
+        <button class="btn secondary" id="clearKey">Schlüssel löschen</button>
+      </div>
+      <p class="hint" id="keyResult" style="margin-top:10px"></p>
+    </div>
+    <div class="card">
+      <h2>Als App auf den Home-Bildschirm</h2>
+      <p class="hint">In Safari unten auf das Teilen-Symbol (Quadrat mit Pfeil) tippen, dann „Zum Home-Bildschirm“. Danach startet Ankleide wie eine normale App.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+// ---------- Speicher (IndexedDB, bleibt im Browser) ----------
+const DB = (() => {
+  let dbp;
+  const open = () => dbp ||= new Promise((res, rej) => {
+    const r = indexedDB.open('ankleide', 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore('items', { keyPath: 'id' }); r.result.createObjectStore('kv'); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  const tx = async (store, mode, fn) => { const db = await open(); return new Promise((res, rej) => {
+    const t = db.transaction(store, mode); const req = fn(t.objectStore(store));
+    t.oncomplete = () => res(req?.result); t.onerror = () => rej(t.error); }); };
+  return {
+    allItems: () => tx('items', 'readonly', s => s.getAll()),
+    putItem: it => tx('items', 'readwrite', s => s.put(it)),
+    delItem: id => tx('items', 'readwrite', s => s.delete(id)),
+    get: k => tx('kv', 'readonly', s => s.get(k)),
+    set: (k, v) => tx('kv', 'readwrite', s => s.put(v, k)),
+  };
+})();
+
+// ---------- Hilfen ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const dataUrl = im => `data:${im.mime};base64,${im.data}`;
+
+function shrink(file, max = 1024) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, max / Math.max(im.width, im.height));
+      const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res({ mime: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.86).split(',')[1] });
+    };
+    im.onerror = () => rej(new Error('Bild konnte nicht gelesen werden'));
+    im.src = url;
+  });
+}
+
+// ---------- Gemini direkt aus dem Browser ----------
+const PRO_IMAGE_MODEL = 'gemini-3-pro-image';
+const DEFAULTS = { textModel: 'gemini-3.5-flash', imageModel: 'gemini-nano-banana-2.1' };
+const BASE = 'https://generativelanguage.googleapis.com/v1beta';
+let cfg = { key: '', ...DEFAULTS };
+function loadSettings() {
+  try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('ankleide-cfg') || '{}') }; } catch {}
+  $('#apiKey').value = cfg.key; $('#hfToken').value = cfg.hf || ''; $('#provider').value = cfg.provider || 'free'; providerHint(); $('#textModel').value = cfg.textModel; $('#imageModel').value = cfg.imageModel;
+}
+function saveSettings() {
+  cfg = { ...cfg, key: $('#apiKey').value.trim(), hf: $('#hfToken').value.trim(), textModel: $('#textModel').value.trim() || DEFAULTS.textModel, imageModel: $('#imageModel').value.trim() || DEFAULTS.imageModel };
+  try { localStorage.setItem('ankleide-cfg', JSON.stringify(cfg)); } catch {}
+}
+
+async function geminiOnce(model, parts, generationConfig = {}) {
+  if (!cfg.key) throw new Error('Kein Gemini-Schlüssel eingetragen. Tippe oben auf ⚙︎.');
+  let res;
+  try {
+    res = await fetch(`${BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig }),
+    });
+  } catch { throw new Error('Keine Verbindung zu Google. Prüfe dein Internet.'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const m = data?.error?.message || `Fehler ${res.status}`;
+    if (res.status === 400 && /API key/i.test(m)) throw new Error('Der Gemini-Schlüssel ist ungültig. Prüfe ihn unter ⚙︎.');
+    const err = (msg, retry, next) => Object.assign(new Error(msg), { retry, next, raw: `${res.status} ${m}` });
+    if (res.status === 404) throw err(`Das Modell „${model}“ gibt es nicht (mehr). Trag unter ⚙︎ ein anderes ein.`, false, true);
+    if (res.status === 429) throw err(/image|banana/.test(model) || (/billing|quota|limit: 0/i.test(m) && !/demand|overload/i.test(m))
+      ? 'Die Bildmodelle von Google sind nicht kostenlos. Aktiviere in AI Studio unter „Billing“ die Abrechnung (ca. 3–7 Cent pro Bild).'
+      : 'Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
+    if (res.status >= 500) throw err('Google ist gerade überlastet. Bitte in ein paar Minuten nochmal versuchen.', true, true);
+    throw Object.assign(new Error('Gemini: ' + m), { raw: `${res.status} ${m}` });
+  }
+  const out = data?.candidates?.[0]?.content?.parts || [];
+  if (!out.length) throw new Error(`Gemini hat nichts zurückgegeben (Grund: ${data?.promptFeedback?.blockReason || data?.candidates?.[0]?.finishReason || 'unbekannt'}).`);
+  return out;
+}
+const img = im => ({ inline_data: { mime_type: im.mime || 'image/jpeg', data: im.data } });
+
+// Bei Überlastung: kurz warten und wiederholen, dann auf Ersatzmodelle ausweichen
+const FALLBACK_TEXT = ['gemini-3.5-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+const FALLBACK_IMAGE = ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3-pro-image'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function gemini(model, parts, generationConfig = {}) {
+  const pool = /image|banana/.test(model) ? FALLBACK_IMAGE : FALLBACK_TEXT;
+  const models = [model, ...pool.filter(m => m !== model)];
+  let last; const tried = [];
+  for (const m of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await geminiOnce(m, parts, generationConfig); }
+      catch (e) {
+        last = e; tried.push(`${m}: ${e.raw || e.message}`);
+        if (!e.next) { e.details = tried; throw e; }
+        if (!e.retry || attempt === 1) break;
+        await sleep(2000);
+      }
+    }
+  }
+  last.details = tried; throw last;
+}
+async function geminiJson(parts) {
+  const out = await gemini(cfg.textModel, parts, { responseMimeType: 'application/json', temperature: 0.6 });
+  const text = out.map(p => p.text || '').join('');
+  try { return JSON.parse(text); } catch { const m = text.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); throw new Error('Antwort von Gemini war unverständlich. Bitte nochmal.'); }
+}
+
+const CATEGORIES = ['Oberteil', 'Hose', 'Rock', 'Kleid', 'Pullover', 'Jacke', 'Mantel', 'Anzug/Sakko', 'Schuhe', 'Accessoire'];
+const handlers = {
+  async '/api/tag'({ image }) {
+    const t = await geminiJson([{ text: `Du bist Mode-Assistent. Analysiere das Kleidungsstück auf dem Foto.
+Antworte NUR mit JSON: {"category": eine aus ${JSON.stringify(CATEGORIES)}, "name": kurzer deutscher Name, "color": Hauptfarbe(n), "pattern": Muster oder "uni", "material": vermutetes Material, "formality": Zahl 1 (sehr leger) bis 5 (sehr formell), "seasons": Liste aus ["Frühling","Sommer","Herbst","Winter"], "description": ein Satz, der das Teil für einen Stylisten genau beschreibt}` }, img(image)]);
+    return { category: t.category, name: t.name, color: t.color, pattern: t.pattern, material: t.material, formality: t.formality, seasons: t.seasons, description: t.description };
+  },
+  async '/api/suggest'({ occasion, notes, weather, items: list, person }) {
+    const r = await geminiJson([{ text: `Du bist ein erfahrener persönlicher Stylist. Stelle aus dem Kleiderschrank unten EIN stimmiges Outfit zusammen.
+Anlass: ${occasion}
+${weather ? 'Wetter: ' + weather + '\n' : ''}${notes ? 'Wünsche: ' + notes + '\n' : ''}${person ? 'Über die Person: ' + person + '\n' : ''}
+Regeln: Nur Teile aus der Liste (per id). Vollständig: Oberkörper + Unterkörper (oder Kleid/Anzug), dazu wenn sinnvoll Jacke, Schuhe, Accessoires. Achte auf Formalität, Farbharmonie und Wetter. Fehlt etwas Wichtiges, nenne es in "missing".
+Kleiderschrank: ${JSON.stringify(list)}
+Antworte NUR mit JSON: {"title": kurzer Name des Looks, "itemIds": [...], "reasoning": 2-3 Sätze, "tips": [1-3 kurze Tipps], "missing": Text oder null}` }]);
+    const valid = new Set(list.map(i => i.id));
+    r.itemIds = (r.itemIds || []).filter(id => valid.has(id));
+    if (!r.itemIds.length) throw new Error('Gemini hat keine passenden Teile gefunden. Bitte nochmal versuchen.');
+    return r;
+  },
+  async '/api/tryon'({ portrait, items: chosen, occasion, pro }) {
+    const parts = [{ text: 'IMAGE 1 – the person (keep this exact person):' }, img(portrait)];
+    chosen.forEach((it, n) => {
+      parts.push({ text: `IMAGE ${n + 2} – garment to put on the person (${it.category || 'clothing'}): ${it.name || ''}. ${it.description || ''}` });
+      parts.push(img(it.image));
+    });
+    const list = chosen.map((it, n) => `IMAGE ${n + 2} (${it.category || 'garment'})`).join(', ');
+    parts.push({ text: `Virtual try-on. Edit IMAGE 1: dress the person in ${list}.
+- REMOVE and REPLACE everything the person is currently wearing on the matching body parts with these garments. The result must clearly show the new garments on the body, not the old outfit.
+- The garment photos may be lying flat, on a hanger or wrinkled: understand the garment and fit it naturally to the person's body with realistic drape, folds and correct size.
+- Copy each garment faithfully: exact color, pattern, print, logo position, collar, buttons, sleeve length, fabric.
+- Keep the person identical: same face, hair, skin tone, body shape and height. Do not beautify or change the face.
+- Show the full body from head to feet, standing naturally, facing the camera. If no shoes are given, add simple shoes that fit the occasion.
+- Clean, bright, neutral background suitable for "${occasion}", soft even light, photorealistic, portrait orientation.
+Return only the edited photo.` });
+    const out = await gemini(pro ? PRO_IMAGE_MODEL : cfg.imageModel, parts, { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: '3:4' } });
+    const p = out.find(x => x.inlineData || x.inline_data);
+    if (!p) throw new Error('Gemini hat kein Bild erzeugt. ' + out.map(x => x.text || '').join(' ').trim());
+    const d = p.inlineData || p.inline_data;
+    return { image: { mime: d.mimeType || d.mime_type || 'image/png', data: d.data } };
+  },
+};
+async function api(path, body) { return handlers[path](body); }
+
+$('#saveKey').onclick = async () => {
+  saveSettings(); const out = $('#keyResult'), btn = $('#saveKey');
+  if (!cfg.key) { out.textContent = 'Bitte einen Schlüssel eintragen.'; return; }
+  busy(btn, true, 'Teste …');
+  try {
+    await gemini(cfg.textModel, [{ text: 'Antworte nur mit: ok' }]);
+    let note = '';
+    try {
+      const r = await fetch(`${BASE}/models?pageSize=200`, { headers: { 'x-goog-api-key': cfg.key } });
+      const names = ((await r.json()).models || []).map(m => m.name.replace('models/', ''));
+      const imgs = names.filter(n => /image|banana/.test(n) && !/imagen|veo/.test(n));
+      if (imgs.length) {
+        FALLBACK_IMAGE.splice(0, FALLBACK_IMAGE.length, ...imgs);
+        if (!imgs.includes(cfg.imageModel)) { cfg.imageModel = imgs[0]; $('#imageModel').value = imgs[0]; saveSettings(); note = ` Bildmodell auf „${imgs[0]}“ umgestellt.`; }
+        note += ` Verfügbare Bildmodelle: ${imgs.join(', ')}.`;
+      } else note = ' Achtung: Für deinen Schlüssel ist kein Bildmodell freigeschaltet.';
+    } catch {}
+    out.textContent = '✓ Verbindung zu Gemini klappt.' + note; $('#status').innerHTML = '';
+  }
+  catch (e) { out.textContent = '✗ ' + e.message; }
+  busy(btn, false);
+};
+$('#clearKey').onclick = () => { $('#apiKey').value = ''; saveSettings(); $('#keyResult').textContent = 'Schlüssel gelöscht.'; };
+
+
+function showError(msg) {
+  $('#status').innerHTML = `<div class="banner err">${esc(msg)}</div>`;
+  setTimeout(() => { if ($('#status').textContent.includes(msg)) $('#status').innerHTML = ''; }, 9000);
+}
+
+function busy(btn, on, label) {
+  if (on) { btn.dataset.label = btn.textContent; btn.innerHTML = `<span class="spinner"></span> ${label}`; btn.disabled = true; }
+  else { btn.textContent = btn.dataset.label; btn.disabled = false; }
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === b.dataset.tab));
+});
+
+// ---------- Kleiderschrank ----------
+let items = [];
+let filter = 'Alle';
+
+function renderWardrobe() {
+  const cats = ['Alle', ...new Set(items.map(i => i.category).filter(Boolean))];
+  $('#filters').innerHTML = items.length ? cats.map(c =>
+    `<button class="chip ${c === filter ? 'active' : ''}" data-c="${esc(c)}">${esc(c)}${c === 'Alle' ? ` (${items.length})` : ''}</button>`).join('') : '';
+  $('#filters').querySelectorAll('.chip').forEach(b => b.onclick = () => { filter = b.dataset.c; renderWardrobe(); });
+  const shown = items.filter(i => filter === 'Alle' || i.category === filter);
+  $('#wardrobe').innerHTML = shown.length ? shown.map(i => `
+    <div class="item ${i.pending ? 'busy' : ''}">
+      <img src="${dataUrl(i.image)}" alt="${esc(i.name)}">
+      <button class="del" data-id="${i.id}" title="Entfernen">×</button>
+      <div class="meta"><b>${esc(i.name || 'Neues Teil')}</b>
+        <span>${esc([i.category, i.color].filter(Boolean).join(' · '))}${i.formality ? ` · formell ${i.formality}/5` : ''}</span>
+        ${i.error ? `<br><span style="color:var(--danger)">Nicht erkannt. <a href="#" data-retry="${i.id}">Nochmal</a></span>` : ''}
+      </div>
+    </div>`).join('') : `<div class="empty">Noch nichts im Schrank. Fang mit ein paar Teilen an.</div>`;
+  $('#wardrobe').querySelectorAll('.del').forEach(b => b.onclick = async () => {
+    if (!confirm('Dieses Teil entfernen?')) return;
+    await DB.delItem(b.dataset.id); items = items.filter(i => i.id !== b.dataset.id); renderWardrobe();
+  });
+  $('#wardrobe').querySelectorAll('[data-retry]').forEach(a => a.onclick = e => {
+    e.preventDefault(); const it = items.find(i => i.id === a.dataset.retry); if (it) analyse(it);
+  });
+}
+
+async function analyse(it) {
+  it.pending = true; it.error = false; renderWardrobe();
+  try {
+    const tags = await api('/api/tag', { image: it.image });
+    Object.assign(it, tags);
+  } catch (e) { it.error = true; showError('Erkennung fehlgeschlagen: ' + e.message); }
+  it.pending = false;
+  const { pending, ...store } = it; await DB.putItem(store);
+  renderWardrobe();
+}
+
+async function addFiles(files) {
+  const queue = [];
+  for (const f of files) {
+    try {
+      const it = { id: crypto.randomUUID(), image: await shrink(f, 768), added: Date.now() };
+      items.unshift(it); queue.push(it); await DB.putItem(it);
+    } catch (e) { showError(e.message); }
+  }
+  renderWardrobe();
+  // nacheinander analysieren, damit das Kontingent nicht überläuft
+  for (const it of queue) await analyse(it);
+}
+$('#itemInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+$('#itemCam').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+
+// ---------- Porträt ----------
+let portrait = null;
+$('#portraitInput').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  portrait = await shrink(f, 1280); await DB.set('portrait', portrait);
+  $('#portraitImg').src = dataUrl(portrait); e.target.value = '';
+};
+$('#personNotes').oninput = e => DB.set('personNotes', e.target.value);
+
+// ---------- Anlass & Vorschlag ----------
+const OCCASIONS = ['Vorstellungsgespräch', 'Geburtstag', 'Essen mit den Chefs', 'Büroalltag', 'Date', 'Hochzeit (Gast)', 'Freunde treffen', 'Sport & Freizeit', 'Beerdigung'];
+let occasion = OCCASIONS[0];
+$('#occasions').innerHTML = OCCASIONS.map(o => `<button class="chip ${o === occasion ? 'active' : ''}">${esc(o)}</button>`).join('');
+$('#occasions').querySelectorAll('.chip').forEach(b => b.onclick = () => {
+  occasion = b.textContent; $('#occasionCustom').value = '';
+  $('#occasions').querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x === b));
+});
+$('#occasionCustom').oninput = e => $('#occasions').querySelectorAll('.chip').forEach(x => x.classList.toggle('active', !e.target.value && x.textContent === occasion));
+const currentOccasion = () => $('#occasionCustom').value.trim() || occasion;
+
+let look = null;
+let lastLookIds = [];
+
+async function suggest(btn) {
+  const usable = items.filter(i => i.category && !i.pending);
+  if (usable.length < 2) return showError('Lade zuerst mindestens ein Oberteil und eine Hose in den Schrank.');
+  busy(btn, true, 'Stylist denkt nach…');
+  try {
+    const notes = [$('#notes').value.trim(), lastLookIds.length ? `Bitte einen anderen Look als zuvor (vorher: ${lastLookIds.join(', ')}).` : ''].filter(Boolean).join(' ');
+    look = await api('/api/suggest', {
+      occasion: currentOccasion(), weather: $('#weather').value.trim(), notes,
+      person: $('#personNotes').value.trim(), items: usable.map(({ image, ...rest }) => rest),
+    });
+    lastLookIds = look.itemIds;
+    renderLook();
+  } catch (e) { showError(e.message); }
+  busy(btn, false);
+}
+$('#suggestBtn').onclick = () => { lastLookIds = []; suggest($('#suggestBtn')); };
+$('#againBtn').onclick = () => suggest($('#againBtn'));
+
+function renderLook() {
+  $('#result').hidden = false;
+  $('#lookTitle').textContent = look.title || 'Dein Look';
+  $('#lookReason').textContent = look.reasoning || '';
+  $('#lookTips').innerHTML = (look.tips || []).map(t => `<li>${esc(t)}</li>`).join('');
+  $('#lookMissing').textContent = look.missing ? 'Fehlt noch: ' + look.missing : '';
+  const chosen = look.itemIds.map(id => items.find(i => i.id === id)).filter(Boolean);
+  $('#lookItems').innerHTML = chosen.map(i => `<div class="item"><img src="${dataUrl(i.image)}" alt=""><div class="meta"><b>${esc(i.name)}</b><span>${esc(i.category)}</span></div></div>`).join('');
+  $('#tryonBox').innerHTML = '<div class="placeholder">Klicke auf „Anprobieren“, um dich im Outfit zu sehen.</div>';
+  $('#downloadBtn').hidden = true;
+  $('#result').scrollIntoView({ behavior: 'smooth' });
+}
+
+
+// ---------- Kostenlose Anprobe über Hugging Face (IDM-VTON) ----------
+const FREE_SPACE = 'yisol/IDM-VTON';
+const UPPER_PRIORITY = ['Jacke', 'Anzug/Sakko', 'Mantel', 'Pullover', 'Oberteil', 'Hemd/Bluse'];
+function providerHint() {
+  const v = $('#provider').value;
+  $('#providerHint').textContent = v === 'free'
+    ? 'Gratis über Hugging Face. Zieht dir nur ein Oberteil an (Jacke, Pulli oder Shirt). Bei vielen Nutzern musst du warten, und pro Tag gibt es nur wenige Gratis-Versuche.'
+    : 'Kostet bei Google Geld. Dafür muss in AI Studio die Abrechnung aktiviert sein.';
+}
+$('#provider').onchange = () => { cfg.provider = $('#provider').value; try { localStorage.setItem('ankleide-cfg', JSON.stringify(cfg)); } catch {} providerHint(); };
+const b64Blob = im => fetch(dataUrl(im)).then(r => r.blob());
+async function freeTryOn(portrait, chosen, onStatus) {
+  const top = UPPER_PRIORITY.map(c => chosen.find(i => i.category === c)).find(Boolean);
+  if (!top) throw new Error('Die kostenlose Anprobe kann nur Oberteile anziehen. In diesem Look ist keins dabei.');
+  onStatus(`Verbinde mit der Gratis-KI … (zieht dir „${top.name}“ an)`);
+  let mod;
+  try { mod = await import('https://cdn.jsdelivr.net/npm/@gradio/client@2.7.2/dist/browser.js'); }
+  catch { throw new Error('Die Gratis-KI konnte nicht geladen werden. Prüfe dein Internet.'); }
+  const { Client, handle_file } = mod;
+  let client;
+  try { client = await Client.connect(FREE_SPACE, cfg.hf ? { token: cfg.hf } : {}); }
+  catch (e) { throw Object.assign(new Error('Die Gratis-KI ist gerade nicht erreichbar. Versuch es später nochmal.'), { details: [String(e?.message || e)] }); }
+  const human = await b64Blob(portrait), garm = await b64Blob(top.image);
+  const job = client.submit('/tryon', [
+    { background: handle_file(human), layers: [], composite: null },
+    handle_file(garm), top.description || top.name || 'clothing', true, true, 30, 42,
+  ]);
+  for await (const ev of job) {
+    if (ev.type === 'status') {
+      if (ev.stage === 'pending') onStatus(ev.position != null ? `In der Warteschlange: Platz ${ev.position + 1} …` : 'Warte auf freie Grafikkarte …');
+      else if (ev.stage === 'generating') onStatus('Bild wird erstellt …');
+      else if (ev.stage === 'error') {
+        const m = ev.message || 'Unbekannter Fehler';
+        const quota = /quota|GPU|exceeded|limit/i.test(m);
+        throw Object.assign(new Error(quota
+          ? 'Das Gratis-Kontingent für heute ist aufgebraucht. Morgen geht es wieder, oder trag unter ⚙︎ einen kostenlosen Hugging-Face-Token ein.'
+          : 'Die Gratis-KI hatte einen Fehler. Versuch es nochmal.'), { details: [m] });
+      }
+    }
+    if (ev.type === 'data') {
+      const out = ev.data?.[0];
+      const url = out?.url || out?.path || out;
+      if (!url || typeof url !== 'string') throw new Error('Die Gratis-KI hat kein Bild geliefert.');
+      const blob = await (await fetch(url)).blob();
+      const data = await new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result.split(',')[1]); f.readAsDataURL(blob); });
+      return { image: { mime: blob.type || 'image/png', data } };
+    }
+  }
+  throw new Error('Die Gratis-KI hat die Verbindung beendet. Versuch es nochmal.');
+}
+
+$('#tryonBtn').onclick = async () => {
+  if (!portrait) { showError('Lade zuerst unter „Ich“ ein Foto von dir hoch.'); return; }
+  const btn = $('#tryonBtn'); busy(btn, true, 'Bild wird erstellt…');
+  $('#tryonBox').innerHTML = '<div class="placeholder"><span><span class="spinner"></span><br><span id="tryStatus">Das dauert meist 10 bis 30 Sekunden.</span></span></div>';
+  try {
+    const chosen = look.itemIds.map(id => items.find(i => i.id === id)).filter(Boolean);
+    const prov = $('#provider').value;
+    const status = t => { const el = $('#tryStatus'); if (el) el.textContent = t; };
+    const r = prov === 'free' ? await freeTryOn(portrait, chosen, status) : await api('/api/tryon', {
+      pro: prov === 'pro',
+      portrait, occasion: currentOccasion(),
+      items: chosen.map(i => ({ image: i.image, name: i.name, category: i.category, description: i.description })),
+    });
+    const src = dataUrl(r.image);
+    $('#tryonBox').innerHTML = `<img src="${src}" alt="Du im Outfit">`;
+    $('#downloadBtn').href = src; $('#downloadBtn').hidden = false;
+  } catch (e) {
+    const det = (e.details || []).map(d => `<li>${esc(d)}</li>`).join('');
+    $('#tryonBox').innerHTML = `<div class="placeholder" style="place-items:start;text-align:left;overflow:auto"><div>
+      <b>Das hat nicht geklappt.</b><p style="margin:6px 0">${esc(e.message || e)}</p>
+      ${det ? `<details open><summary>Technische Details</summary><ul style="font-size:12px;padding-left:18px;word-break:break-word">${det}</ul></details>` : ''}
+      <p style="font-size:13px">Mach davon bitte einen Screenshot für Claude.</p></div></div>`;
+  }
+  busy(btn, false);
+};
+
+// ---------- Start ----------
+(async () => {
+  loadSettings();
+  if (!cfg.key) { $('#status').innerHTML = '<div class="banner warn">Trag zuerst unter ⚙︎ deinen Gemini-Schlüssel ein.</div>'; }
+  items = (await DB.allItems()).sort((a, b) => (b.added || 0) - (a.added || 0));
+  portrait = await DB.get('portrait');
+  if (portrait) $('#portraitImg').src = dataUrl(portrait);
+  $('#personNotes').value = (await DB.get('personNotes')) || '';
+  renderWardrobe();
+})();
+</script>
+</body>
+</html>

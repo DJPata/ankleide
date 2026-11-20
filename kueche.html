@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Küchenhilfe · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .ing li.have::marker { content: "✓  "; }
+  .ing li.need::marker { content: "＋ "; }
+  .ing li { color: var(--ink); }
+  .ing li.need span.n { color: var(--danger); font-size: 13px; margin-left: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Küchenhilfe</h1>
+    <p>Was ist da? Was kochen wir?</p>
+  </header>
+  <main>
+    <div id="status"></div>
+
+    <section class="card">
+      <h2>1. Was hast du da?</h2>
+      <p class="hint">Fotografiere Kühlschrank, Vorratsschrank oder Obstkorb. Tür ganz auf, gutes Licht. Mehrere Fotos gehen auch.</p>
+      <div class="row">
+        <span class="btn file">📷 Fotos hinzufügen<input id="photoInput" type="file" accept="image/*" multiple aria-label="Fotos hinzufügen"></span>
+        <button class="btn secondary" id="clearBtn" hidden>Alles zurücksetzen</button>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="chips" id="ingredients"></div>
+      <div class="row">
+        <input id="addIng" type="text" placeholder="Zutat von Hand ergänzen, z. B. Nudeln" style="flex:1 1 200px">
+        <button class="btn secondary" id="addBtn">Hinzufügen</button>
+      </div>
+      <p class="hint">Salz, Pfeffer, Öl und Grundgewürze nehme ich als vorhanden an.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Wie soll's werden?</h2>
+      <label>Zeit</label>
+      <div class="chips" id="times"></div>
+      <label>Richtung</label>
+      <div class="chips" id="styles"></div>
+      <label>Oder eigener Wunsch<input id="custom" type="text" placeholder="z. B. etwas mit Ofen, ohne Fleisch, für Kinder"></label>
+      <label>Personen<input id="persons" type="number" min="1" max="12" value="2" inputmode="numeric" style="max-width:120px"></label>
+      <div class="row"><button class="btn" id="recipeBtn">Rezept vorschlagen</button></div>
+    </section>
+
+    <section class="card" id="recipe" hidden></section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script>
+const TIMES = ['15 Min.', '30 Min.', '45 Min.', '1 Stunde', '2 Stunden+'];
+const STYLES = ['Schnell & einfach', 'Hausmannskost', 'Italienisch', 'Asiatisch', 'Orientalisch', 'Vegetarisch', 'Gesund & leicht', 'Sterneküche'];
+let state = load('hh-kueche', { ingredients: [], time: '30 Min.', style: 'Schnell & einfach' });
+let photos = [], recipe = null, previous = [];
+
+function persist() { save('hh-kueche', state); }
+function renderIngredients() {
+  $('#ingredients').innerHTML = state.ingredients.map((n, i) => `<button type="button" class="chip" data-i="${i}" aria-label="${esc(n)} entfernen">${esc(n)}<span class="x">×</span></button>`).join('')
+    || '<p class="hint">Noch keine Zutaten. Mach ein Foto oder trag sie von Hand ein.</p>';
+  $('#ingredients').querySelectorAll('[data-i]').forEach(b => b.onclick = () => { state.ingredients.splice(+b.dataset.i, 1); persist(); renderIngredients(); });
+  $('#clearBtn').hidden = !state.ingredients.length && !photos.length;
+}
+function renderThumbs() { $('#thumbs').innerHTML = photos.map(p => `<img src="${dataUrl(p)}" alt="">`).join(''); }
+
+chipGroup($('#times'), TIMES, state.time, v => { state.time = v; persist(); });
+chipGroup($('#styles'), STYLES, state.style, v => { state.style = v; $('#custom').value = ''; persist(); });
+renderIngredients(); requireKeyBanner();
+
+$('#addBtn').onclick = () => {
+  const v = $('#addIng').value.trim(); if (!v) return;
+  v.split(/[,;]/).map(s => s.trim()).filter(Boolean).forEach(s => { if (!state.ingredients.some(x => x.toLowerCase() === s.toLowerCase())) state.ingredients.push(s); });
+  $('#addIng').value = ''; persist(); renderIngredients();
+};
+$('#addIng').onkeydown = e => { if (e.key === 'Enter') $('#addBtn').click(); };
+$('#clearBtn').onclick = () => { state.ingredients = []; photos = []; persist(); renderThumbs(); renderIngredients(); $('#recipe').hidden = true; };
+
+$('#photoInput').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+  const label = $('#photoInput').parentElement;
+  try {
+    const imgs = await Promise.all(files.map(f => shrink(f, 1280)));
+    photos.push(...imgs); renderThumbs();
+    label.classList.add('disabled'); label.firstChild.textContent = '⏳ Erkenne Zutaten …';
+    const r = await geminiJson(`Du bist Küchenassistent. Liste alle erkennbaren Lebensmittel und Zutaten auf diesen Fotos (Kühlschrank/Vorrat).
+Nenne sie kurz auf Deutsch, ohne Marken, mit grober Menge wenn gut erkennbar (z. B. "3 Eier", "Milch", "halbe Zucchini").
+Keine Gewürze, Getränke nur wenn zum Kochen nützlich. Unsicheres weglassen.
+Antworte NUR mit JSON: {"ingredients": ["..."]}`, imgs);
+    const found = (r.ingredients || []).map(String);
+    const before = state.ingredients.length;
+    found.forEach(s => { if (!state.ingredients.some(x => x.toLowerCase() === s.toLowerCase())) state.ingredients.push(s); });
+    persist(); renderIngredients();
+    showMsg(found.length ? `${state.ingredients.length - before} Zutaten erkannt. Tippe eine an, um sie zu entfernen.` : 'Ich konnte auf dem Foto keine Zutaten erkennen. Versuch es mit mehr Licht.', found.length ? 'ok' : 'warn');
+  } catch (err) { showMsg(err.message); }
+  label.firstChild.textContent = '📷 Fotos hinzufügen';
+};
+
+async function makeRecipe(btn) {
+  if (!state.ingredients.length) return showMsg('Fotografiere zuerst deinen Kühlschrank oder trag Zutaten ein.', 'warn');
+  busy(btn, true, 'Koch denkt nach …');
+  const style = $('#custom').value.trim() || state.style;
+  const persons = Math.max(1, Math.min(12, +$('#persons').value || 2));
+  try {
+    recipe = await geminiJson(`Du bist ein kreativer, erfahrener Koch. Schlage EIN Rezept vor.
+Vorhandene Zutaten: ${state.ingredients.join(', ')}
+Grundzutaten wie Salz, Pfeffer, Öl, Zucker, Mehl und Standardgewürze sind vorhanden.
+Maximale Zeit inkl. Vorbereitung: ${state.time}
+Richtung/Wunsch: ${style}${style === 'Sterneküche' ? ' (anspruchsvoll, schön angerichtet, aber mit Haushaltsmitteln machbar)' : ''}
+Personen: ${persons}
+${previous.length ? 'NICHT nochmal vorschlagen: ' + previous.join(', ') + '\n' : ''}
+Nutze möglichst viel von den vorhandenen Zutaten. Wenige fehlende Zutaten sind ok, markiere sie mit "have": false.
+Antworte NUR mit JSON auf Deutsch:
+{"title": "...", "description": "1 Satz, der Lust macht", "time": "z. B. 25 Min.", "difficulty": "leicht|mittel|anspruchsvoll",
+ "ingredients": [{"name": "Zutat", "amount": "Menge für ${persons} Personen", "have": true}],
+ "steps": ["kurze, klare Arbeitsschritte"], "tip": "ein Profi-Tipp"}`);
+    previous.push(recipe.title);
+    renderRecipe();
+  } catch (e) { showMsg(e.message); }
+  busy(btn, false);
+}
+
+function renderRecipe() {
+  const r = recipe, missing = (r.ingredients || []).filter(i => i.have === false);
+  const box = $('#recipe'); box.hidden = false;
+  box.innerHTML = `
+    <h2>${esc(r.title)}</h2>
+    <p style="margin:0">${esc(r.description)}</p>
+    <div class="meta"><span class="pill">⏱ ${esc(r.time)}</span><span class="pill">${esc(r.difficulty)}</span><span class="pill">👥 ${esc($('#persons').value)}</span></div>
+    <h3 style="margin:6px 0 0;font-size:16px">Zutaten</h3>
+    <ul class="list ing">${(r.ingredients || []).map(i => `<li class="${i.have === false ? 'need' : 'have'}">${esc(i.amount)} ${esc(i.name)}${i.have === false ? '<span class="n">fehlt</span>' : ''}</li>`).join('')}</ul>
+    <h3 style="margin:6px 0 0;font-size:16px">Zubereitung</h3>
+    <ol class="steps">${(r.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    ${r.tip ? `<p class="banner ok" style="margin:4px 0 0">💡 ${esc(r.tip)}</p>` : ''}
+    <div class="row">
+      ${missing.length ? `<button class="btn" id="toList">🛒 ${missing.length} fehlende auf die Einkaufsliste</button>` : '<span class="hint">Du hast alles da.</span>'}
+      <button class="btn secondary" id="againBtn">Anderes Rezept</button>
+    </div>`;
+  $('#againBtn').onclick = () => makeRecipe($('#againBtn'));
+  if (missing.length) $('#toList').onclick = () => {
+    const n = addToShoppingList(missing.map(i => `${i.name}${i.amount ? ' (' + i.amount + ')' : ''}`), r.title);
+    $('#toList').textContent = n ? `✓ ${n} auf der Einkaufsliste` : '✓ Steht schon drauf'; $('#toList').disabled = true;
+  };
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('#recipeBtn').onclick = () => { previous = []; makeRecipe($('#recipeBtn')); };
+</script>
+</body>
+</html>

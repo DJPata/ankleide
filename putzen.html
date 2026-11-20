@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Home Cleaner · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .photo { width: 100%; max-height: 320px; object-fit: cover; border-radius: 12px; background: var(--soft); }
+  .mat { display: grid; gap: 2px; }
+  .mat small { color: var(--muted); }
+  .warn-list li::marker { content: "⚠︎  "; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Home Cleaner</h1>
+    <p>Foto machen, Anleitung bekommen.</p>
+  </header>
+  <main>
+    <div id="status"></div>
+    <section class="card">
+      <h2>Was soll sauber werden?</h2>
+      <p class="hint">Fotografiere die Stelle aus der Nähe, z. B. Kalk in der Toilette, Schimmel in der Fuge, die verkalkte Duschwand oder die ganze Küche.</p>
+      <div class="row"><span class="btn file">📷 Foto machen<input id="photoInput" type="file" accept="image/*" aria-label="Foto machen"></span></div>
+      <img class="photo" id="photo" alt="" hidden>
+      <label>Was weißt du darüber? (optional)<input id="note" type="text" placeholder="z. B. Granit-Arbeitsplatte, Fleck ist seit Wochen da"></label>
+      <label>Was hast du schon da? (optional)<input id="have" type="text" placeholder="z. B. Essig, Spülmittel, Zitronensäure"></label>
+      <div class="row"><button class="btn" id="goBtn">Anleitung holen</button></div>
+    </section>
+    <section class="card" id="result" hidden></section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script>
+let photo = null, guide = null;
+$('#have').value = load('hh-putzen-have', '');
+$('#have').oninput = e => save('hh-putzen-have', e.target.value);
+requireKeyBanner();
+
+$('#photoInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { photo = await shrink(f, 1280); $('#photo').src = dataUrl(photo); $('#photo').hidden = false; $('#result').hidden = true; }
+  catch (err) { showMsg(err.message); }
+};
+
+$('#goBtn').onclick = async () => {
+  if (!photo) return showMsg('Mach zuerst ein Foto von der Stelle.', 'warn');
+  const btn = $('#goBtn'); busy(btn, true, 'Schaue mir das an …');
+  try {
+    guide = await geminiJson(`Du bist ein erfahrener Reinigungsprofi und erklärst einem Laien, wie er die Stelle auf dem Foto sauber bekommt.
+${$('#note').value.trim() ? 'Hinweis der Person: ' + $('#note').value.trim() + '\n' : ''}${$('#have').value.trim() ? 'Hat schon zu Hause: ' + $('#have').value.trim() + '\n' : ''}
+Erkenne Raum, Oberfläche/Material und die Art der Verschmutzung (z. B. Kalk, Urinstein, Fett, Schimmel, Rost, Seifenreste).
+Wenn es ein ganzer Raum ist: gib eine sinnvolle Reihenfolge (von oben nach unten, trocken vor nass).
+Bevorzuge günstige Hausmittel, wenn sie gut wirken, und nenne sonst ein übliches Produkt aus Drogerie/Supermarkt (Produktart, keine Marke).
+WICHTIG Sicherheit: Warne vor gefährlichen Kombinationen (nie Chlorreiniger mit Säure wie Essig/Zitronensäure/Entkalker mischen), vor empfindlichen Materialien (Naturstein, Marmor, Silikon, Edelstahl, Holz) und sag, wann Handschuhe/Lüften nötig sind. Bei großflächigem Schimmel: Fachbetrieb empfehlen.
+Antworte NUR mit JSON auf Deutsch:
+{"title": "kurz, z. B. Kalk in der Toilette entfernen", "found": "1-2 Sätze, was du erkennst",
+ "difficulty": "leicht|mittel|aufwendig", "time": "z. B. 15 Min. + 1 Std. einwirken",
+ "materials": [{"name": "Mittel oder Werkzeug", "why": "wofür", "have": true/false je nachdem ob die Person es schon hat}],
+ "steps": ["klare Schritte"], "warnings": ["Sicherheits- und Materialhinweise"],
+ "prevent": "ein Tipp, damit es nicht wiederkommt"}`, [photo]);
+    render();
+  } catch (e) { showMsg(e.message); }
+  busy(btn, false);
+};
+
+function render() {
+  const g = guide, need = (g.materials || []).filter(m => m.have !== true);
+  const box = $('#result'); box.hidden = false;
+  box.innerHTML = `
+    <h2>${esc(g.title)}</h2>
+    <p style="margin:0">${esc(g.found)}</p>
+    <div class="meta"><span class="pill">${esc(g.difficulty)}</span><span class="pill">⏱ ${esc(g.time)}</span></div>
+    <h3 style="margin:6px 0 0;font-size:16px">Das brauchst du</h3>
+    <ul class="list">${(g.materials || []).map(m => `<li class="mat"><span>${m.have === true ? '✓ ' : ''}${esc(m.name)}</span><small>${esc(m.why)}</small></li>`).join('')}</ul>
+    <h3 style="margin:6px 0 0;font-size:16px">So geht's</h3>
+    <ol class="steps">${(g.steps || []).map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    ${(g.warnings || []).length ? `<div class="banner warn"><b>Achtung</b><ul class="list warn-list" style="margin-top:6px">${g.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
+    ${g.prevent ? `<p class="banner ok" style="margin:0">💡 ${esc(g.prevent)}</p>` : ''}
+    <div class="row">
+      ${need.length ? `<button class="btn" id="toList">🛒 ${need.length} Sachen auf die Einkaufsliste</button>` : ''}
+      <button class="btn secondary" id="newBtn">Neue Stelle</button>
+    </div>`;
+  if (need.length) $('#toList').onclick = () => {
+    const n = addToShoppingList(need.map(m => m.name), g.title);
+    $('#toList').textContent = n ? `✓ ${n} auf der Einkaufsliste` : '✓ Steht schon drauf'; $('#toList').disabled = true;
+  };
+  $('#newBtn').onclick = () => { photo = null; $('#photo').hidden = true; $('#note').value = ''; box.hidden = true; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>

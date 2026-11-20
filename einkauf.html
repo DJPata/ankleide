@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Einkaufsliste · Haushaltshilfe</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="common.css">
+<style>
+  .group h3 { margin: 4px 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .item:last-child { border-bottom: 0; }
+  .item input { width: 24px; height: 24px; accent-color: var(--accent); flex: none; }
+  .item .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .item .src { display: block; color: var(--muted); font-size: 12px; }
+  .item.done .t { text-decoration: line-through; color: var(--muted); }
+  .item .del { background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; padding: 0 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="./">‹ Haushaltshilfe</a>
+    <h1>Einkaufsliste</h1>
+    <p>Abhaken im Laden, zusammenfassen mit einem Tipp.</p>
+  </header>
+  <main>
+    <div id="status"></div>
+    <section class="card">
+      <div class="row">
+        <input id="newItem" type="text" placeholder="z. B. Milch, Brot, 6 Eier" style="flex:1 1 200px" aria-label="Neuer Eintrag">
+        <button class="btn" id="addBtn">Hinzufügen</button>
+      </div>
+      <p class="hint">Mehrere Dinge mit Komma trennen. Fehlende Zutaten aus der Küchenhilfe und Putzmittel aus dem Home Cleaner landen auch hier.</p>
+    </section>
+
+    <section class="card" id="listCard">
+      <div id="list"></div>
+      <div class="row" id="actions">
+        <button class="btn" id="sumBtn">✨ Zusammenfassen &amp; sortieren</button>
+        <button class="btn secondary" id="clearDone">Erledigte löschen</button>
+        <button class="btn secondary" id="copyBtn">Kopieren</button>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="common.js"></script>
+<script>
+let list = load(LIST_KEY, []);
+const persist = () => save(LIST_KEY, list);
+
+function itemHtml(i) {
+  return `<div class="item ${i.done ? 'done' : ''}">
+    <input type="checkbox" data-id="${i.id}" ${i.done ? 'checked' : ''} aria-label="${esc(i.text)} abhaken">
+    <span class="t">${esc(i.text)}${i.source ? `<span class="src">für ${esc(i.source)}</span>` : ''}</span>
+    <button class="del" data-del="${i.id}" aria-label="Löschen">×</button></div>`;
+}
+function render() {
+  const open = list.filter(i => !i.done), done = list.filter(i => i.done);
+  if (!list.length) { $('#list').innerHTML = '<p class="hint">Die Liste ist leer.</p>'; $('#actions').hidden = true; return; }
+  $('#actions').hidden = false;
+  const groups = {};
+  open.forEach(i => (groups[i.group || ''] ||= []).push(i));
+  const names = Object.keys(groups).sort((a, b) => (a === '') - (b === '') || a.localeCompare(b, 'de'));
+  $('#list').innerHTML = names.map(g => `<div class="group">${g ? `<h3>${esc(g)}</h3>` : ''}${groups[g].map(itemHtml).join('')}</div>`).join('')
+    + (done.length ? `<div class="group"><h3>Erledigt</h3>${done.map(itemHtml).join('')}</div>` : '');
+  $('#list').querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => { const it = list.find(i => i.id === c.dataset.id); it.done = c.checked; persist(); render(); });
+  $('#list').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { list = list.filter(i => i.id !== b.dataset.del); persist(); render(); });
+}
+
+$('#addBtn').onclick = () => {
+  const v = $('#newItem').value.trim(); if (!v) return;
+  addToShoppingList(v.split(/[,;\n]/), ''); list = load(LIST_KEY, []);
+  $('#newItem').value = ''; render();
+};
+$('#newItem').onkeydown = e => { if (e.key === 'Enter') $('#addBtn').click(); };
+$('#clearDone').onclick = () => { list = list.filter(i => !i.done); persist(); render(); };
+$('#copyBtn').onclick = async () => {
+  const text = list.filter(i => !i.done).map(i => '• ' + i.text).join('\n');
+  try { await navigator.clipboard.writeText(text); showMsg('Liste kopiert. Du kannst sie jetzt z. B. in WhatsApp einfügen.', 'ok', 4000); }
+  catch { showMsg('Kopieren hat nicht geklappt.'); }
+};
+$('#sumBtn').onclick = async () => {
+  const open = list.filter(i => !i.done);
+  if (open.length < 2) return showMsg('Dafür brauchst du mindestens zwei offene Einträge.', 'warn');
+  const btn = $('#sumBtn'); busy(btn, true, 'Fasse zusammen …');
+  try {
+    const r = await geminiJson(`Fasse diese Einkaufsliste zusammen:
+- Doppelte oder ähnliche Einträge zusammenlegen und Mengen addieren (z. B. "2 Eier" + "4 Eier" = "6 Eier").
+- Kurze, klare deutsche Bezeichnungen.
+- Jedem Eintrag eine Supermarkt-Abteilung geben, aus: "Obst & Gemüse", "Brot & Backwaren", "Kühlregal", "Fleisch & Fisch", "Tiefkühl", "Vorrat & Konserven", "Gewürze & Backen", "Getränke", "Drogerie & Putzmittel", "Sonstiges".
+- "sources": die Rezepte/Zwecke aus der Eingabe, für die der Eintrag gebraucht wird (leer, wenn keiner).
+Eingabe (JSON): ${JSON.stringify(open.map(i => ({ text: i.text, for: i.source || '' })))}
+Antworte NUR mit JSON: {"items": [{"text": "...", "group": "...", "sources": ["..."]}]}`);
+    const merged = (r.items || []).filter(i => i.text).map(i => ({ id: crypto.randomUUID(), text: i.text, group: i.group || 'Sonstiges', source: (i.sources || []).filter(Boolean).join(', '), done: false }));
+    if (!merged.length) throw new Error('Zusammenfassen hat nichts ergeben. Bitte nochmal versuchen.');
+    list = [...merged, ...list.filter(i => i.done)]; persist(); render();
+    showMsg(`Aus ${open.length} Einträgen wurden ${merged.length}, sortiert nach Abteilung.`, 'ok', 5000);
+  } catch (e) { showMsg(e.message); }
+  busy(btn, false);
+};
+render();
+</script>
+</body>
+</html>
