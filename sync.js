@@ -29,6 +29,8 @@
   function friendly(e) {
     const m = String(e?.code || e?.message || e);
     if (/permission/i.test(m)) return 'Keine Berechtigung. Sind die Firestore-Regeln veröffentlicht?';
+    if (/configuration-not-found|CONFIGURATION_NOT_FOUND/i.test(m)) return 'In Firebase ist „Authentication“ noch nicht eingerichtet (Schritt 3).';
+    if (/does not exist|NOT_FOUND|not-found/i.test(m)) return 'In Firebase fehlt noch die Firestore-Datenbank (Schritt 4).';
     if (/admin-restricted|operation-not-allowed/i.test(m)) return 'Anonyme Anmeldung ist in Firebase noch nicht eingeschaltet.';
     if (/unauthorized-domain/i.test(m)) return 'djpata.github.io fehlt in Firebase unter „Autorisierte Domains“.';
     if (/network|offline|unavailable|Failed to fetch|import/i.test(m)) return 'Keine Verbindung. Ich versuche es später nochmal.';
