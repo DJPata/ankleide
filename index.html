@@ -7,42 +7,90 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
-<meta name="theme-color" content="#f7f4ef">
+<meta name="theme-color" content="#0a0a0b">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="common.css">
 <style>
+  .hello { color: var(--muted); font-size: 14px; letter-spacing: .08em; text-transform: uppercase; margin: 0; }
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; text-decoration: none; color: var(--ink);
-    display: grid; gap: 6px; align-content: start; min-height: 150px; }
-  .tile:last-child:nth-child(odd) { grid-column: 1 / -1; min-height: 0; }
-  .tile:active { transform: scale(.98); }
-  .tile .ic { width: 44px; height: 44px; border-radius: 12px; background: var(--soft); display: grid; place-items: center; font-size: 24px; }
-  .tile b { font-size: 17px; }
-  .tile span { color: var(--muted); font-size: 13px; }
-  .tile .count { color: var(--accent); font-weight: 600; font-size: 13px; }
-  details.card summary { cursor: pointer; font-weight: 600; font-size: 17px; }
-  details.card[open] summary { margin-bottom: 8px; }
+  .tile { position: relative; overflow: hidden; background: var(--card); border: 1px solid var(--line); border-radius: 24px; padding: 18px; text-decoration: none; color: var(--ink);
+    display: grid; gap: 4px; align-content: start; min-height: 168px; transition: transform .15s, border-color .15s; }
+  .tile:active { transform: scale(.97); }
+  .tile:hover { border-color: #3a3a40; }
+  .tile::after { content: ""; position: absolute; width: 160px; height: 160px; right: -60px; top: -60px; border-radius: 50%;
+    background: radial-gradient(circle, var(--glow, rgba(232,211,176,.18)), transparent 70%); pointer-events: none; }
+  .tile .ic { width: 48px; height: 48px; border-radius: 16px; display: grid; place-items: center; font-size: 24px; margin-bottom: 14px;
+    background: var(--icbg, #26221c); }
+  .tile b { font: 600 17px/1.25 var(--display); letter-spacing: -.01em; }
+  .tile span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .tile .count { display: inline-block; margin-top: 4px; color: var(--accent-ink); background: var(--accent); font-weight: 600; font-size: 12px; padding: 3px 9px; border-radius: 999px; }
+  .tile.wide { grid-column: 1 / -1; min-height: 0; display: flex; align-items: center; gap: 16px; padding: 20px;
+    background: linear-gradient(135deg, #1d1a15 0%, #151517 60%); border-color: #3a3328; }
+  .tile.wide .ic { margin: 0; width: 60px; height: 60px; border-radius: 50%; background: var(--accent); font-size: 28px; flex: none; }
+  .tile.wide div { display: grid; gap: 2px; }
+  .t-wardrobe { --icbg: #2a2030; --glow: rgba(200,150,255,.16); }
+  .t-kitchen  { --icbg: #2e2318; --glow: rgba(255,170,90,.16); }
+  .t-list     { --icbg: #172a22; --glow: rgba(120,220,170,.14); }
+  .t-plants   { --icbg: #1c2a18; --glow: rgba(150,230,120,.14); }
+  .t-clean    { --icbg: #172330; --glow: rgba(110,180,255,.16); }
+  .t-todo { --icbg: #2a2614; --glow: rgba(240,210,120,.14); }
+  .voice-hero { background: linear-gradient(160deg, #1d1a15 0%, #151517 55%); border-color: #3a3328; }
+  .voice-hero .hint { text-align: center; }
+  .t-settings { --icbg: #232327; --glow: rgba(255,255,255,.06); }
+  details.card summary { cursor: pointer; font: 600 17px var(--display); display: flex; justify-content: space-between; align-items: center; }
+  details.card summary::after { content: "＋"; color: var(--muted); }
+  details.card[open] summary::after { content: "－"; }
   @media (max-width: 340px) { .tiles { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
+    <p class="hello" id="hello"></p>
     <h1>Haushaltshilfe</h1>
-    <p>Anziehen, kochen, einkaufen, gießen, putzen und alles per Sprache.</p>
+    <p>Sag einfach, was ansteht. Den Rest sortiere ich.</p>
   </header>
   <main>
     <div id="status"></div>
-    <a class="tile" href="sprache.html" style="grid-column:1/-1;min-height:0;display:flex;align-items:center;gap:14px;margin-bottom:0">
-      <div class="ic">🎙️</div><div style="display:grid;gap:2px"><b>Sprach-To-do</b><span id="todoCount">Einfach reden: Einkauf, Putzen und To-dos landen von selbst in der richtigen Liste</span></div></a>
+    <section class="card voice-hero">
+      <div class="mic-wrap">
+        <button class="mic" id="mic" aria-label="Aufnahme starten">🎙️</button>
+        <div id="micLabel"><b>Tippen und lossprechen</b></div>
+        <div class="timer" id="timer"></div>
+      </div>
+      <p class="hint" style="text-align:center">z. B. „Milch und zwei Gurken kaufen, am Samstag den Backofen putzen und morgen Oma anrufen.“ Nochmal tippen zum Beenden.</p>
+      <details>
+        <summary class="hint" style="cursor:pointer">Lieber tippen?</summary>
+        <div class="row" style="margin-top:8px">
+          <textarea id="typed" placeholder="Schreib einfach alles auf, was dir einfällt."></textarea>
+          <button class="btn secondary" id="typedBtn">Sortieren</button>
+        </div>
+      </details>
+      <p class="hint" style="font-size:12px">Die Aufnahme wird zur Auswertung an Google Gemini geschickt und danach nicht gespeichert.</p>
+    </section>
+
+    <section class="card" id="preview" data-nofold hidden>
+      <h2>Bitte kurz prüfen</h2>
+      <p class="transcript" id="transcript"></p>
+      <div id="cards"></div>
+      <div class="row">
+        <button class="btn" id="applyBtn">✓ Alles übernehmen</button>
+        <button class="btn secondary" id="fixBtn">🎙️ Per Sprache ändern</button>
+        <button class="btn secondary" id="discardBtn">Verwerfen</button>
+      </div>
+      <p class="hint">Tippe auf „Einkauf“, „Putzen“, „Pflanzen“ oder „To-do“, um ein Ziel zu ändern.</p>
+    </section>
+
     <div class="tiles">
-      <a class="tile" href="ankleidezimmer.html"><div class="ic">👔</div><b>Ankleidezimmer</b><span>Outfit für jeden Anlass aus deinem Schrank</span></a>
-      <a class="tile" href="kueche.html"><div class="ic">🍳</div><b>Küchenhilfe</b><span>Kühlschrank fotografieren, Rezept bekommen</span></a>
-      <a class="tile" href="einkauf.html"><div class="ic">🛒</div><b>Einkaufsliste</b><span id="listCount">Alles, was noch fehlt</span></a>
-      <a class="tile" href="pflanzen.html"><div class="ic">🪴</div><b>Flora-Park</b><span id="plantCount">Gießplan für deine Pflanzen</span></a>
-      <a class="tile" href="putzen.html"><div class="ic">🧽</div><b>Home Cleaner</b><span>Foto machen, Putz-Anleitung bekommen</span></a>
+      <a class="tile t-wardrobe" href="ankleidezimmer.html"><div class="ic">👔</div><b>Ankleidezimmer</b><span>Outfit für jeden Anlass</span></a>
+      <a class="tile t-kitchen" href="kueche.html"><div class="ic">🍳</div><b>Küchenhilfe</b><span>Kühlschrank-Foto wird zum Rezept</span></a>
+      <a class="tile t-list" href="einkauf.html"><div class="ic">🛒</div><b>Einkaufsliste</b><span id="listCount">Alles, was noch fehlt</span></a>
+      <a class="tile t-plants" href="pflanzen.html"><div class="ic">🪴</div><b>Flora-Park</b><span id="plantCount">Gießplan für deine Pflanzen</span></a>
+      <a class="tile t-todo" href="sprache.html"><div class="ic">✅</div><b>To-dos</b><span id="todoCount">Alles, was du eingesprochen hast</span></a>
+      <a class="tile t-clean" href="putzen.html"><div class="ic">🧽</div><b>Home Cleaner</b><span>Foto machen, Putz-Anleitung bekommen</span></a>
     </div>
 
     <details class="card" id="settings">
@@ -60,18 +108,22 @@
   </main>
 </div>
 <script src="common.js"></script>
+<script src="voice.js"></script>
 <script>
+  const h = new Date().getHours();
+  $('#hello').textContent = (h < 11 ? 'Guten Morgen' : h < 18 ? 'Hallo' : 'Guten Abend') + ' · ' + new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
   const cfg = getCfg();
   $('#apiKey').value = cfg.key || '';
   if (!cfg.key) { $('#settings').open = true; }
   const open = load('hh-einkauf', []).filter(i => !i.done).length;
-  if (open) $('#listCount').innerHTML = `<span class="count">${open} ${open === 1 ? 'Eintrag' : 'Einträge'} offen</span>`;
-  const DAY = 864e5, t0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;
-  const duePlants = load('hh-pflanzen', []).filter(p => { const [y, m, d] = p.last.split('-').map(Number); return Math.round((t0 - new Date(y, m - 1, d).getTime()) / DAY) >= Math.max(1, Math.round(summer ? p.summer : p.winter) || 7); }).length;
-  if (duePlants) $('#plantCount').innerHTML = `<span class="count">💧 ${duePlants} ${duePlants === 1 ? 'Pflanze' : 'Pflanzen'} gießen</span>`;
+  if (open) $('#listCount').innerHTML = `<br><span class="count">${open} ${open === 1 ? 'Eintrag' : 'Einträge'} offen</span>`;
+  const DAY = 864e5, today0 = new Date().setHours(0, 0, 0, 0), summer = new Date().getMonth() >= 3 && new Date().getMonth() <= 8;
+  const duePlants = load('hh-pflanzen', []).filter(p => { const [y, m, d] = p.last.split('-').map(Number); return Math.round((today0 - new Date(y, m - 1, d).getTime()) / DAY) >= Math.max(1, Math.round(summer ? p.summer : p.winter) || 7); }).length;
+  if (duePlants) $('#plantCount').innerHTML = `<br><span class="count">💧 ${duePlants} ${duePlants === 1 ? 'Pflanze' : 'Pflanzen'} gießen</span>`;
   const td = isoDay(), tasks = [...load('hh-todo', []), ...load('hh-putzplan', [])].filter(t => !t.done);
   const dueNow = tasks.filter(t => t.due && t.due <= td).length;
-  if (tasks.length) $('#todoCount').innerHTML = `<span class="count">${tasks.length} offen${dueNow ? `, ${dueNow} heute fällig` : ''}</span>`;
+  if (tasks.length) $('#todoCount').innerHTML = `<br><span class="count">${tasks.length} offen${dueNow ? `, ${dueNow} heute fällig` : ''}</span>`;
+  window.onVoiceApplied = () => location.reload();
   $('#saveKey').onclick = async () => {
     const btn = $('#saveKey'); setCfg({ key: $('#apiKey').value.trim() });
     if (!getCfg().key) { $('#keyResult').textContent = 'Bitte einen Schlüssel eintragen.'; return; }

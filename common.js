@@ -118,3 +118,20 @@ const isoDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1
 function requireKeyBanner() {
   if (!getCfg().key) showMsg('Trag zuerst auf der Startseite unter „Einstellungen“ deinen Gemini-Schlüssel ein.', 'warn', 0);
 }
+
+// Aufklappbare Abschnitte: jede Karte mit Überschrift lässt sich per Tipp auf- und zuklappen.
+// Die erste ist offen, der Zustand wird pro Seite gemerkt.
+function foldSections() {
+  let firstDone = false;
+  document.querySelectorAll('main > section.card:not([data-nofold])').forEach((sec, i) => {
+    const h = sec.querySelector(':scope > h2'); if (!h) return;
+    const key = 'hh-fold:' + location.pathname.split('/').pop() + ':' + i;
+    sec.classList.add('fold'); h.setAttribute('role', 'button'); h.tabIndex = 0;
+    const set = open => { sec.classList.toggle('open', open); h.setAttribute('aria-expanded', open); };
+    const def = sec.hasAttribute('data-open') || (!firstDone && !sec.hidden); if (!sec.hidden) firstDone = true;
+    set(load(key, def));
+    const toggle = () => { const o = !sec.classList.contains('open'); set(o); save(key, o); };
+    h.onclick = toggle; h.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
+  });
+}
+document.addEventListener('DOMContentLoaded', foldSections);

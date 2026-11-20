@@ -7,21 +7,19 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#f7f4ef">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0b">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
 <style>
   :root {
-    --bg: #f7f4ef; --card: #ffffff; --ink: #1f1c18; --muted: #6f675d; --line: #e4ddd2;
-    --accent: #7a4e2d; --accent-ink: #fff; --danger: #b3261e; --ok: #2e6b3f;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #171512; --card: #221f1b; --ink: #f1ece5; --muted: #a79e92; --line: #39342d;
-      --accent: #d29a6a; --accent-ink: #1b140e; }
+    --bg: #0a0a0b; --card: #151517; --ink: #f4f2ee; --muted: #9a9894; --line: #26262b;
+    --accent: #e8d3b0; --accent-ink: #141210; --danger: #ff8f80; --ok: #8fdcaa; color-scheme: dark;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   header { padding: calc(20px + env(safe-area-inset-top)) 16px 8px; max-width: 960px; margin: 0 auto; }
@@ -68,10 +66,8 @@
   .tryon .placeholder { aspect-ratio: 3/4; border: 2px dashed var(--line); border-radius: 12px; display: grid;
     place-items: center; color: var(--muted); text-align: center; padding: 16px; }
   .banner { padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 14px; }
-  .banner.warn { background: #fff3cd; color: #5c4400; }
-  .banner.err { background: #fde8e6; color: var(--danger); }
-  @media (prefers-color-scheme: dark) { .banner.warn { background: #3d3216; color: #f3dc9b; }
-    .banner.err { background: #3d1c1a; color: #ffb4ab; } }
+  .banner.warn { background: #2a2314; color: #f2d491; }
+  .banner.err { background: #2c1714; color: var(--danger); }
   .spinner { width: 18px; height: 18px; border: 3px solid currentColor; border-right-color: transparent;
     border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -79,6 +75,33 @@
   ul.tips { margin: 8px 0 0; padding-left: 20px; }
   .empty { color: var(--muted); text-align: center; padding: 24px; }
   input[type=file] { display: none; }
+
+  /* Modernes dunkles Design */
+  body { font: 16px/1.5 "Inter", system-ui, -apple-system, sans-serif; -webkit-font-smoothing: antialiased; }
+  header { padding-top: calc(22px + env(safe-area-inset-top)); padding-left: 18px; padding-right: 18px; }
+  header .back { display: inline-flex; padding: 6px 12px 6px 8px; margin-left: -8px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); font-size: 14px !important; }
+  header h1 { margin-top: 14px; font: 700 34px/1.1 "Sora", system-ui, sans-serif; letter-spacing: -.02em; }
+  nav { background: rgba(10,10,11,.85); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 0; padding: 8px 0; top: env(safe-area-inset-top, 0px); }
+  nav .inner { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px; margin: 0 18px; max-width: 924px; }
+  @media (min-width: 960px) { nav .inner { margin: 0 auto; } }
+  nav button { border: 0; border-radius: 999px; padding: 10px 6px; font-weight: 500; }
+  nav button.active { background: var(--ink); color: var(--bg); }
+  main { padding-left: 18px; padding-right: 18px; }
+  .card { border-radius: 20px; padding: 18px; }
+  .card h2 { font: 600 18px/1.3 "Sora", system-ui, sans-serif; letter-spacing: -.01em; }
+  .btn { border-radius: 999px; padding: 12px 20px; }
+  .btn.secondary { background: #1c1c20; }
+  .chip { background: #1c1c20; }
+  .chip.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .item { border-radius: 18px; }
+  input[type=text], input[type=password], textarea, select { border-radius: 14px; padding: 12px 14px; }
+  .portrait img, .tryon img { border-radius: 18px; }
+  .tipcard summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+  .tipcard summary::-webkit-details-marker { display: none; }
+  .tipcard summary::after { content: "＋"; color: var(--muted); }
+  .tipcard[open] summary::after { content: "－"; }
+  .tipcard[open] summary { margin-bottom: 8px; }
+  .tryon .placeholder { border-radius: 18px; border-color: #2e2e34; }
 </style>
 </head>
 <body>
@@ -111,12 +134,12 @@
         </label>
       </div>
     </div>
-<div class="card"><h2>So klappt die Anprobe am besten</h2><ul class="tips">
+<details class="card tipcard"><summary><h2 style="display:inline">So klappt die Anprobe am besten</h2></summary><ul class="tips">
         <li>Jedes Teil <b>einzeln</b> und <b>von vorne</b> fotografieren. Die Rückseite braucht die KI nicht.</li>
         <li><b>Flach</b> auf Bett oder Boden legen oder an einen Bügel an eine helle Tür hängen. Ruhiger, einfarbiger Hintergrund.</li>
         <li><b>Tageslicht</b> am Fenster, kein Blitz. Das ganze Teil muss im Bild sein, glatt gestrichen, nicht zerknüllt.</li>
         <li>Von <b>oben</b> fotografieren, damit nichts schief oder verzerrt ist.</li>
-      </ul></div>
+      </ul></details>
     <div class="filters chips" id="filters"></div>
     <div class="grid" id="wardrobe"></div>
   </section>
@@ -137,18 +160,18 @@
         </div>
       </div>
     </div>
-<div class="card"><h2>Das ideale Foto von dir</h2><ul class="tips">
+<details class="card tipcard"><summary><h2 style="display:inline">Das ideale Foto von dir</h2></summary><ul class="tips">
         <li><b>Ganzkörper</b> von Kopf bis Fuß, gerade stehend, Arme locker neben dem Körper.</li>
         <li><b>Schlichte, enge Kleidung</b> (z. B. einfarbiges T-Shirt und Jeans). Keine Jacke, kein Mantel, keine Tasche.</li>
         <li>Helle Wand dahinter, gutes Tageslicht, Kamera auf Brusthöhe. Am besten fotografiert dich jemand.</li>
-      </ul></div>
+      </ul></details>
   </section>
 
   <!-- ANZIEHEN -->
   <section id="anziehen">
     <div class="card">
       <h2>Wofür ziehst du dich an?</h2>
-      <div class="chips" id="occasions"></div>
+      <select id="occasions" aria-label="Anlass"></select>
       <label for="occasionCustom">Oder eigener Anlass</label>
       <input id="occasionCustom" type="text" placeholder="z.B. Taufe meiner Nichte im Garten">
       <label for="weather">Wetter (optional)</label>
@@ -185,6 +208,7 @@
           <button class="btn" id="tryonBtn">Anprobieren</button>
 
           <a class="btn secondary" id="downloadBtn" download="ankleide-look.png" hidden>Bild speichern</a>
+          <button class="btn" id="shareBtn" hidden>Teilen</button>
         </div>
       </div>
     </div>
@@ -475,12 +499,8 @@ $('#personNotes').oninput = e => DB.set('personNotes', e.target.value);
 // ---------- Anlass & Vorschlag ----------
 const OCCASIONS = ['Vorstellungsgespräch', 'Geburtstag', 'Essen mit den Chefs', 'Büroalltag', 'Date', 'Hochzeit (Gast)', 'Freunde treffen', 'Sport & Freizeit', 'Beerdigung'];
 let occasion = OCCASIONS[0];
-$('#occasions').innerHTML = OCCASIONS.map(o => `<button class="chip ${o === occasion ? 'active' : ''}">${esc(o)}</button>`).join('');
-$('#occasions').querySelectorAll('.chip').forEach(b => b.onclick = () => {
-  occasion = b.textContent; $('#occasionCustom').value = '';
-  $('#occasions').querySelectorAll('.chip').forEach(x => x.classList.toggle('active', x === b));
-});
-$('#occasionCustom').oninput = e => $('#occasions').querySelectorAll('.chip').forEach(x => x.classList.toggle('active', !e.target.value && x.textContent === occasion));
+$('#occasions').innerHTML = OCCASIONS.map(o => `<option>${esc(o)}</option>`).join('');
+$('#occasions').onchange = e => { occasion = e.target.value; $('#occasionCustom').value = ''; };
 const currentOccasion = () => $('#occasionCustom').value.trim() || occasion;
 
 let look = null;
@@ -513,7 +533,7 @@ function renderLook() {
   const chosen = look.itemIds.map(id => items.find(i => i.id === id)).filter(Boolean);
   $('#lookItems').innerHTML = chosen.map(i => `<div class="item"><img src="${dataUrl(i.image)}" alt=""><div class="meta"><b>${esc(i.name)}</b><span>${esc(i.category)}</span></div></div>`).join('');
   $('#tryonBox').innerHTML = '<div class="placeholder">Klicke auf „Anprobieren“, um dich im Outfit zu sehen.</div>';
-  $('#downloadBtn').hidden = true;
+  $('#downloadBtn').hidden = true; $('#shareBtn').hidden = true;
   $('#result').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -569,6 +589,18 @@ async function freeTryOn(portrait, chosen, onStatus) {
   throw new Error('Die Gratis-KI hat die Verbindung beendet. Versuch es nochmal.');
 }
 
+let lastLook = null;
+// Teilen über das iPhone-Teilen-Menü (WhatsApp, Nachrichten, Fotos sichern …)
+$('#shareBtn').onclick = async () => {
+  if (!lastLook) return;
+  try {
+    const blob = await (await fetch(lastLook.src)).blob();
+    const file = new File([blob], 'mein-look.' + (blob.type.split('/')[1] || 'png'), { type: blob.type || 'image/png' });
+    const data = { title: lastLook.title, text: `${lastLook.title} – was meinst du?` };
+    if (navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
+    await navigator.share(data);
+  } catch (e) { if (e.name !== 'AbortError') showError('Teilen hat nicht geklappt. Nutze „Bild speichern“.'); }
+};
 $('#tryonBtn').onclick = async () => {
   if (!portrait) { showError('Lade zuerst unter „Ich“ ein Foto von dir hoch.'); return; }
   const btn = $('#tryonBtn'); busy(btn, true, 'Bild wird erstellt…');
@@ -585,6 +617,7 @@ $('#tryonBtn').onclick = async () => {
     const src = dataUrl(r.image);
     $('#tryonBox').innerHTML = `<img src="${src}" alt="Du im Outfit">`;
     $('#downloadBtn').href = src; $('#downloadBtn').hidden = false;
+    lastLook = { src, title: look.title || 'Mein Look' }; $('#shareBtn').hidden = !navigator.share;
   } catch (e) {
     const det = (e.details || []).map(d => `<li>${esc(d)}</li>`).join('');
     $('#tryonBox').innerHTML = `<div class="placeholder" style="place-items:start;text-align:left;overflow:auto"><div>

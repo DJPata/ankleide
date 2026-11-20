@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Flora-Park · Haushaltshilfe</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0b">
 <meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -40,7 +42,7 @@
       <div id="todo"></div>
     </section>
 
-    <section class="card">
+    <section class="card" data-open>
       <h2>Pflanze hinzufügen</h2>
       <label>Wo steht sie?</label>
       <div class="chips" id="where"></div>
@@ -112,7 +114,7 @@ function render() {
         <div class="row" style="margin-top:8px"><button class="btn small secondary" data-del="${p.id}">Pflanze entfernen</button></div>
       </details></div>`).join('') || '<p class="hint">Noch keine Pflanzen.</p>';
   document.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
-    const p = plants.find(x => x.id === b.dataset.water); p.last = iso(today()); persist(); render();
+    const p = plants.find(x => x.id === b.dataset.water); p.last = iso(today()); p.updatedAt = Date.now(); persist(); render();
     showMsg(`${p.name} gegossen. Nächstes Mal in ${interval(p)} Tagen.`, 'ok', 3000);
   });
   document.querySelectorAll('[data-sum]').forEach(i => i.onchange = () => { plants.find(x => x.id === i.dataset.sum).summer = +i.value || 7; plants.find(x => x.id === i.dataset.sum).inCal = false; persist(); render(); });
@@ -142,7 +144,7 @@ Antworte NUR mit JSON auf Deutsch:
     if (!r.name) throw new Error('Ich konnte die Pflanze nicht erkennen. Versuch ein Foto, auf dem die Blätter gut zu sehen sind.');
     const p = { id: crypto.randomUUID(), name: r.name, species: r.species, emoji: r.emoji, location: where, room: $('#room').value.trim(),
       summer: +r.summer || 7, winter: +r.winter || 14, water: r.water, light: r.light, care: r.care, outdoorNote: r.outdoorNote, toxic: r.toxic,
-      last: iso(new Date(today().getTime() - DAY * 0)) };
+      last: iso(today()), updatedAt: Date.now() };
     plants.push(p); persist(); render();
     showMsg(`${p.emoji || '🪴'} ${p.name} hinzugefügt${r.confidence === 'niedrig' ? ' (unsicher erkannt, prüf den Namen)' : ''}. Ich gehe davon aus, dass du sie heute gegossen hast.`, 'ok', 6000);
     $('#byName').value = '';

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Küchenhilfe · Haushaltshilfe</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0b">
 <meta name="apple-mobile-web-app-title" content="Haushaltshilfe">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -42,24 +44,23 @@
       <p class="hint">Salz, Pfeffer, Öl und Grundgewürze nehme ich als vorhanden an.</p>
     </section>
 
-    <section class="card">
+    <section class="card" data-open>
       <h2>2. Wie soll's werden?</h2>
       <label>Zeit</label>
       <div class="chips" id="times"></div>
-      <label>Richtung</label>
-      <div class="chips" id="styles"></div>
+      <label>Richtung<select id="styles"></select></label>
       <label>Oder eigener Wunsch<input id="custom" type="text" placeholder="z. B. etwas mit Ofen, ohne Fleisch, für Kinder"></label>
       <label>Personen<input id="persons" type="number" min="1" max="12" value="2" inputmode="numeric" style="max-width:120px"></label>
       <div class="row"><button class="btn" id="recipeBtn">Rezept vorschlagen</button></div>
     </section>
 
-    <section class="card" id="recipe" hidden></section>
+    <section class="card" id="recipe" data-nofold hidden></section>
   </main>
 </div>
 <script src="common.js"></script>
 <script>
 const TIMES = ['15 Min.', '30 Min.', '45 Min.', '1 Stunde', '2 Stunden+'];
-const STYLES = ['Schnell & einfach', 'Hausmannskost', 'Italienisch', 'Asiatisch', 'Orientalisch', 'Vegetarisch', 'Gesund & leicht', 'Sterneküche'];
+const STYLES = ['Schnell & einfach', 'Hausmannskost', 'Italienisch', 'Asiatisch', 'Orientalisch', 'Ottolenghi', 'Vegetarisch', 'Gesund & leicht', 'Sterneküche'];
 let state = load('hh-kueche', { ingredients: [], time: '30 Min.', style: 'Schnell & einfach' });
 let photos = [], recipe = null, previous = [];
 
@@ -72,8 +73,9 @@ function renderIngredients() {
 }
 function renderThumbs() { $('#thumbs').innerHTML = photos.map(p => `<img src="${dataUrl(p)}" alt="">`).join(''); }
 
+function fillSelect(el, opts, cur, onPick) { el.innerHTML = opts.map(o => `<option ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join(''); el.onchange = () => onPick(el.value); }
 chipGroup($('#times'), TIMES, state.time, v => { state.time = v; persist(); });
-chipGroup($('#styles'), STYLES, state.style, v => { state.style = v; $('#custom').value = ''; persist(); });
+fillSelect($('#styles'), STYLES, state.style, v => { state.style = v; $('#custom').value = ''; persist(); });
 renderIngredients(); requireKeyBanner();
 
 $('#addBtn').onclick = () => {
@@ -114,7 +116,7 @@ async function makeRecipe(btn) {
 Vorhandene Zutaten: ${state.ingredients.join(', ')}
 Grundzutaten wie Salz, Pfeffer, Öl, Zucker, Mehl und Standardgewürze sind vorhanden.
 Maximale Zeit inkl. Vorbereitung: ${state.time}
-Richtung/Wunsch: ${style}${style === 'Sterneküche' ? ' (anspruchsvoll, schön angerichtet, aber mit Haushaltsmitteln machbar)' : ''}
+Richtung/Wunsch: ${style}${style === 'Sterneküche' ? ' (anspruchsvoll, schön angerichtet, aber mit Haushaltsmitteln machbar)' : style === 'Ottolenghi' ? ' (im Stil von Yotam Ottolenghi: gemüsebetont, nahöstlich-mediterran, viele frische Kräuter, Joghurt/Tahini, Granatapfel, Sumach, Za’atar, kräftige Säure und Texturkontraste)' : ''}
 Personen: ${persons}
 ${previous.length ? 'NICHT nochmal vorschlagen: ' + previous.join(', ') + '\n' : ''}
 Nutze möglichst viel von den vorhandenen Zutaten. Wenige fehlende Zutaten sind ok, markiere sie mit "have": false.
